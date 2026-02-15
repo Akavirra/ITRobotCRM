@@ -4,11 +4,15 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { generatePublicId } from '@/lib/public-id';
 
-// Use environment variable or default path
-const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'school.db');
+const APP_ENV = process.env.APP_ENV || 'dev'; // 'dev' | 'prod'
 
-// Check if we're in development mode
-const IS_DEV = process.env.NODE_ENV !== 'production';
+const DEFAULT_DB_FILE = APP_ENV === 'prod' ? 'school.prod.db' : 'school.dev.db';
+
+// Use environment variable or default path
+const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', DEFAULT_DB_FILE);
+
+// Dev/Prod mode flag (safer than NODE_ENV for your case)
+const IS_DEV = APP_ENV !== 'prod';
 
 // Schema version for tracking DB compatibility
 const SCHEMA_VERSION = 2;
