@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
+import Portal from '@/components/Portal';
 import { uk } from '@/i18n/uk';
 
 interface User {
@@ -52,7 +53,25 @@ export default function GroupsPage() {
   const [search, setSearch] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
   const [teacherFilter, setTeacherFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [daysFilter, setDaysFilter] = useState<number[]>([]);
+  
+  // Dropdown state
+  const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
+  const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement | null>(null);
+  
+  // Archive toggle
+  const [showArchived, setShowArchived] = useState(false);
+  
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  
+  // Status change
+  const [changingStatus, setChangingStatus] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,8 +84,8 @@ export default function GroupsPage() {
         const authData = await authRes.json();
         setUser(authData.user);
 
-        // Fetch groups
-        const groupsRes = await fetch('/api/groups');
+        // Fetch groups with includeInactive to get all groups
+        const groupsRes = await fetch('/api/groups?includeInactive=true');
         const groupsData = await groupsRes.json();
         setGroups(groupsData.groups || []);
 
@@ -91,34 +110,55 @@ export default function GroupsPage() {
     fetchData();
   }, [router]);
 
+  // Handle click outside dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        !(dropdownButtonRef.current && dropdownButtonRef.current.contains(target)) &&
+        !(dropdownMenuRef.current && dropdownMenuRef.current.contains(target))
+      ) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleSearch = async (query: string) => {
     setSearch(query);
-    applyFilters(query, courseFilter, teacherFilter, statusFilter);
+    applyFilters(query, courseFilter, teacherFilter, daysFilter);
   };
 
   const handleFilterChange = (filterType: string, value: string) => {
     switch (filterType) {
       case 'course':
         setCourseFilter(value);
-        applyFilters(search, value, teacherFilter, statusFilter);
+        applyFilters(search, value, teacherFilter, daysFilter);
         break;
       case 'teacher':
         setTeacherFilter(value);
-        applyFilters(search, courseFilter, value, statusFilter);
-        break;
-      case 'status':
-        setStatusFilter(value);
-        applyFilters(search, courseFilter, teacherFilter, value);
+        applyFilters(search, courseFilter, value, daysFilter);
         break;
     }
   };
 
-  const applyFilters = async (searchQuery: string, course: string, teacher: string, status: string) => {
+  const handleDaysFilterChange = (day: number) => {
+    const newDays = daysFilter.includes(day)
+      ? daysFilter.filter(d => d !== day)
+      : [...daysFilter, day];
+    setDaysFilter(newDays);
+    applyFilters(search, courseFilter, teacherFilter, newDays);
+  };
+
+  const applyFilters = async (searchQuery: string, course: string, teacher: string, days: number[]) => {
     const params = new URLSearchParams();
     if (searchQuery) params.append('search', searchQuery);
     if (course) params.append('courseId', course);
     if (teacher) params.append('teacherId', teacher);
-    if (status) params.append('status', status);
+    if (days.length > 0) params.append('days', days.join(','));
+    params.append('includeInactive', 'true');
 
     const res = await fetch(`/api/groups?${params.toString()}`);
     const data = await res.json();
@@ -146,104 +186,255 @@ export default function GroupsPage() {
     }
   };
 
+  const handleStatusChange = async (groupId: number, newStatus: string) => {
+    setChangingStatus(groupId);
+    try {
+      await fetch(`/api/groups/${groupId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      // Refresh groups
+      const res = await fetch('/api/groups?includeInactive=true');
+      const data = await res.json();
+      setGroups(data.groups || []);
+    } catch (error) {
+      console.error('Failed to change status:', error);
+    } finally {
+      setChangingStatus(null);
+    }
+  };
+
+  const handleArchive = async (group: Group) => {
+    const action = group.status === 'active' ? 'archive' : 'restore';
+    const actionText = group.status === 'active' ? 'архівувати' : 'відновити';
+    
+    if (!confirm(`${actionText} групу "${group.title}"?`)) return;
+    
+    try {
+      await fetch(`/api/groups/${group.id}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      
+      // Refresh groups
+      const res = await fetch('/api/groups?includeInactive=true');
+      const data = await res.json();
+      setGroups(data.groups || []);
+    } catch (error) {
+      console.error('Failed to archive/restore group:', error);
+    }
+  };
+
+  const handleDeleteClick = (group: Group) => {
+    setGroupToDelete(group);
+    setDeletePassword('');
+    setDeleteError('');
+    setShowDeleteModal(true);
+    setOpenDropdownId(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!groupToDelete) return;
+    
+    setDeleting(true);
+    setDeleteError('');
+    
+    try {
+      const response = await fetch(`/api/groups/${groupToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: deletePassword })
+      });
+      
+      if (response.ok) {
+        setShowDeleteModal(false);
+        setGroupToDelete(null);
+        setDeletePassword('');
+        // Refresh groups
+        const res = await fetch('/api/groups?includeInactive=true');
+        const data = await res.json();
+        setGroups(data.groups || []);
+      } else {
+        const errorData = await response.json();
+        if (response.status === 401) {
+          setDeleteError('Невірний пароль');
+        } else if (response.status === 403) {
+          setDeleteError('Недостатньо прав');
+        } else if (response.status === 409) {
+          setDeleteError(errorData.error || 'Неможливо видалити групу');
+        } else {
+          setDeleteError(errorData.error || 'Сталася помилка. Спробуйте ще раз.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete group:', error);
+      setDeleteError('Сталася помилка. Спробуйте ще раз.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
+    setGroupToDelete(null);
+    setDeletePassword('');
+    setDeleteError('');
+  };
+
   if (loading) {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>{uk.common.loading}</div>;
   }
 
   if (!user) return null;
 
+  // Filter groups based on archive toggle
+  const filteredGroups = groups.filter(group => {
+    if (showArchived) {
+      // Show inactive (archived) and graduate groups in archive view
+      return (group.status === 'inactive' || group.status === 'graduate') && 
+        group.title.toLowerCase().includes(search.toLowerCase());
+    }
+    // Show only active groups
+    return group.status === 'active' && group.title.toLowerCase().includes(search.toLowerCase());
+  });
+
   return (
     <Layout user={user}>
       <div className="card">
-        <div className="card-header">
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '600', margin: 0 }}>
-            {uk.pages.groups}
-          </h1>
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+          {/* Search */}
+          <input
+            type="text"
+            className="form-input"
+            placeholder={`${uk.actions.search}...`}
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={{ width: '200px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
+          />
+
+          {/* Course filter - compact select */}
+          <select
+            className="form-input"
+            value={courseFilter}
+            onChange={(e) => handleFilterChange('course', e.target.value)}
+            style={{ width: '160px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
+          >
+            <option value="">{uk.pages.courses}</option>
+            {courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.title}
+              </option>
+            ))}
+          </select>
+
+          {/* Teacher filter (admin only) */}
           {user.role === 'admin' && (
-            <button className="btn btn-primary" onClick={() => router.push('/groups/new')}>
-              + {uk.actions.addGroup}
-            </button>
-          )}
-        </div>
-
-        {/* Filters */}
-        <div style={{ padding: '1rem', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Search */}
-            <input
-              type="text"
-              className="form-input"
-              placeholder={`${uk.actions.search}...`}
-              value={search}
-              onChange={(e) => handleSearch(e.target.value)}
-              style={{ maxWidth: '250px' }}
-            />
-
-            {/* Course filter */}
             <select
               className="form-input"
-              value={courseFilter}
-              onChange={(e) => handleFilterChange('course', e.target.value)}
-              style={{ minWidth: '180px' }}
+              value={teacherFilter}
+              onChange={(e) => handleFilterChange('teacher', e.target.value)}
+              style={{ width: '160px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
             >
-              <option value="">{uk.common.all} {uk.pages.courses.toLowerCase()}</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title}
+              <option value="">{uk.roles.teacher}</option>
+              {teachers.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.name}
                 </option>
               ))}
             </select>
+          )}
 
-            {/* Teacher filter (admin only) */}
-            {user.role === 'admin' && (
-              <select
-                className="form-input"
-                value={teacherFilter}
-                onChange={(e) => handleFilterChange('teacher', e.target.value)}
-                style={{ minWidth: '180px' }}
-              >
-                <option value="">{uk.common.all} {uk.roles.teacher.toLowerCase()}</option>
-                {teachers.map((teacher) => (
-                  <option key={teacher.id} value={teacher.id}>
-                    {teacher.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* Status filter */}
-            <select
-              className="form-input"
-              value={statusFilter}
-              onChange={(e) => handleFilterChange('status', e.target.value)}
-              style={{ minWidth: '150px' }}
-            >
-              <option value="">{uk.common.all} {uk.common.status.toLowerCase()}</option>
-              <option value="active">{uk.groupStatus.active}</option>
-              <option value="graduate">{uk.groupStatus.graduate}</option>
-              <option value="inactive">{uk.groupStatus.inactive}</option>
-            </select>
-
-            {/* Clear filters */}
-            {(search || courseFilter || teacherFilter || statusFilter) && (
+          {/* Days of week filter - compact chips */}
+          <div style={{ display: 'flex', gap: '0.25rem' }}>
+            {[1, 2, 3, 4, 5, 6, 7].map((day) => (
               <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setSearch('');
-                  setCourseFilter('');
-                  setTeacherFilter('');
-                  setStatusFilter('');
-                  router.refresh();
+                key={day}
+                onClick={() => handleDaysFilterChange(day)}
+                style={{
+                  padding: '0.5rem 0.625rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: daysFilter.includes(day) ? '600' : '400',
+                  borderRadius: '0.375rem',
+                  border: daysFilter.includes(day) ? '1px solid #374151' : '1px solid #e5e7eb',
+                  backgroundColor: daysFilter.includes(day) ? '#374151' : 'white',
+                  color: daysFilter.includes(day) ? 'white' : '#374151',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
                 }}
               >
-                {uk.actions.cancel}
+                {uk.daysShort[day as keyof typeof uk.daysShort] || getDayName(day).slice(0, 2)}
+              </button>
+            ))}
+          </div>
+
+          {/* Right side: toggle and button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
+            {/* Toggle switch for archived groups */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+              <span 
+                style={{ 
+                  fontSize: '0.8125rem', 
+                  fontWeight: !showArchived ? '600' : '400', 
+                  color: !showArchived ? '#111827' : '#9ca3af',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {uk.status.active}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowArchived(!showArchived)}
+                style={{
+                  position: 'relative',
+                  width: '36px',
+                  height: '20px',
+                  backgroundColor: '#e5e7eb',
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  margin: '0 0.375rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '2px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '14px',
+                    height: '14px',
+                    backgroundColor: showArchived ? '#6b7280' : '#374151',
+                    borderRadius: '3px',
+                    transition: 'all 0.2s',
+                    transform: showArchived ? 'translateX(18px)' : 'translateX(0)',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                  }}
+                />
+              </button>
+              <span 
+                style={{ 
+                  fontSize: '0.8125rem', 
+                  fontWeight: showArchived ? '600' : '400', 
+                  color: showArchived ? '#111827' : '#9ca3af',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {uk.status.archived}
+              </span>
+            </div>
+            {user.role === 'admin' && (
+              <button className="btn btn-primary" onClick={() => router.push('/groups/new')}>
+                + {uk.actions.addGroup}
               </button>
             )}
           </div>
         </div>
 
         <div className="table-container">
-          {groups.length > 0 ? (
+          {filteredGroups.length > 0 ? (
             <table className="table">
               <thead>
                 <tr>
@@ -255,11 +446,11 @@ export default function GroupsPage() {
                   <th style={{ textAlign: 'center' }}>{uk.table.students}</th>
                   <th>{uk.common.status}</th>
                   <th>{uk.table.note}</th>
-                  <th>{uk.common.actions}</th>
+                  {user.role === 'admin' && <th style={{ textAlign: 'right' }}>{uk.common.actions}</th>}
                 </tr>
               </thead>
               <tbody>
-                {groups.map((group) => (
+                {filteredGroups.map((group) => (
                   <tr key={group.id}>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#6b7280' }}>
                       {group.public_id}
@@ -279,9 +470,36 @@ export default function GroupsPage() {
                     {user.role === 'admin' && <td>{group.teacher_name}</td>}
                     <td style={{ textAlign: 'center' }}>{group.students_count}</td>
                     <td>
-                      <span className={`badge ${getStatusBadgeClass(group.status)}`}>
-                        {getStatusLabel(group.status)}
-                      </span>
+                      {user.role === 'admin' && changingStatus !== group.id ? (
+                        <select
+                          value={group.status}
+                          onChange={(e) => handleStatusChange(group.id, e.target.value)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.75rem',
+                            borderRadius: '0.375rem',
+                            border: `2px solid ${
+                              group.status === 'active' ? '#10b981' :
+                              group.status === 'graduate' ? '#3b82f6' :
+                              '#6b7280'
+                            }`,
+                            backgroundColor: 'white',
+                            cursor: 'pointer',
+                            fontWeight: 500,
+                            color: group.status === 'active' ? '#065f46' :
+                                   group.status === 'graduate' ? '#1e40af' :
+                                   '#374151',
+                          }}
+                        >
+                          <option value="active">{uk.groupStatus.active}</option>
+                          <option value="graduate">{uk.groupStatus.graduate}</option>
+                          <option value="inactive">{uk.groupStatus.inactive}</option>
+                        </select>
+                      ) : (
+                        <span className={`badge ${getStatusBadgeClass(group.status)}`}>
+                          {changingStatus === group.id ? '...' : getStatusLabel(group.status)}
+                        </span>
+                      )}
                     </td>
                     <td>
                       {group.note ? (
@@ -298,24 +516,139 @@ export default function GroupsPage() {
                         <span style={{ color: '#9ca3af' }}>—</span>
                       )}
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => router.push(`/groups/${group.id}`)}
-                        >
-                          {uk.actions.view}
-                        </button>
-                        {user.role === 'admin' && (
+                    {user.role === 'admin' && (
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'inline-block' }}>
                           <button
+                            ref={openDropdownId === group.id ? dropdownButtonRef : undefined}
                             className="btn btn-secondary btn-sm"
-                            onClick={() => router.push(`/groups/${group.id}/edit`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenDropdownId(openDropdownId === group.id ? null : group.id);
+                            }}
+                            style={{ 
+                              padding: '0.5rem',
+                              borderRadius: '0.5rem',
+                              backgroundColor: openDropdownId === group.id ? '#f3f4f6' : 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s',
+                            }}
                           >
-                            {uk.actions.edit}
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                              <circle cx="12" cy="5" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="12" cy="19" r="2" />
+                            </svg>
                           </button>
-                        )}
-                      </div>
-                    </td>
+                          {openDropdownId === group.id && (
+                            <Portal anchorRef={dropdownButtonRef} menuRef={dropdownMenuRef} offsetY={6}>
+                              <div
+                                style={{
+                                  backgroundColor: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '0.75rem',
+                                  boxShadow: '0 10px 40px -10px rgba(0,0,0,0.15), 0 0 2px rgba(0,0,0,0.1)',
+                                  minWidth: '200px',
+                                  padding: '0.5rem',
+                                  zIndex: 50,
+                                  overflow: 'hidden',
+                                  animation: 'dropdownFadeIn 0.15s ease-out',
+                                }}
+                              >
+                                <style>{`
+                                  @keyframes dropdownFadeIn {
+                                    from { opacity: 0; transform: translateY(-8px); }
+                                    to { opacity: 1; transform: translateY(0); }
+                                  }
+                                `}</style>
+                                <a
+                                  href={`/groups/${group.id}`}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.625rem 0.75rem',
+                                    color: '#374151',
+                                    textDecoration: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = '#1f2937'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#374151'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#6b7280' }}>
+                                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                                  </svg>
+                                  Переглянути групу
+                                </a>
+                                <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '0.25rem 0' }} />
+                                <a
+                                  href={`/groups/${group.id}/edit`}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.625rem 0.75rem',
+                                    color: '#374151',
+                                    textDecoration: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = '#1f2937'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#374151'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#6b7280' }}>
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                  Редагувати групу
+                                </a>
+                                <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '0.25rem 0' }} />
+                                <button
+                                  className="btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteClick(group);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    width: '100%',
+                                    padding: '0.625rem 0.75rem',
+                                    color: '#dc2626',
+                                    textAlign: 'left',
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fef2f2'; e.currentTarget.style.color = '#b91c1c'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#dc2626'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    <line x1="10" y1="11" x2="10" y2="17" />
+                                    <line x1="14" y1="11" x2="14" y2="17" />
+                                  </svg>
+                                  Видалити групу
+                                </button>
+                              </div>
+                            </Portal>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -345,6 +678,61 @@ export default function GroupsPage() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && groupToDelete && (
+        <div className="modal-overlay" onClick={handleDeleteCancel}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Підтвердження видалення</h3>
+              <button className="modal-close" onClick={handleDeleteCancel} disabled={deleting}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ margin: '0 0 1rem 0' }}>
+                Щоб видалити групу, введіть пароль адміністратора.
+              </p>
+              <p style={{ margin: '0 0 1rem 0', fontWeight: 500 }}>
+                Група: {groupToDelete.title}
+              </p>
+              <div className="form-group">
+                <label className="form-label">Пароль</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Введіть пароль"
+                  disabled={deleting}
+                  autoFocus
+                />
+              </div>
+              {deleteError && (
+                <div style={{ 
+                  color: '#dc2626', 
+                  backgroundColor: '#fef2f2', 
+                  padding: '0.75rem', 
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem'
+                }}>
+                  {deleteError}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={handleDeleteCancel} disabled={deleting}>
+                Скасувати
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={handleDeleteConfirm} 
+                disabled={deleting || !deletePassword.trim()}
+              >
+                {deleting ? 'Видалення...' : 'Видалити'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

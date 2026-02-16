@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
+import Portal from '@/components/Portal';
 import { t } from '@/i18n/t';
 
 interface User {
@@ -53,6 +54,12 @@ export default function CoursesPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement | null>(null);
+
+  
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,7 +72,7 @@ export default function CoursesPage() {
         const authData = await authRes.json();
         setUser(authData.user);
 
-        const coursesRes = await fetch('/api/courses?withStats=true');
+        const coursesRes = await fetch('/api/courses?withStats=true&includeInactive=true');
         const coursesData = await coursesRes.json();
         setCourses(coursesData.courses || []);
       } catch (error) {
@@ -78,14 +85,30 @@ export default function CoursesPage() {
     fetchData();
   }, [router]);
 
+  // Handle click outside dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        !(dropdownButtonRef.current && dropdownButtonRef.current.contains(target)) &&
+        !(dropdownMenuRef.current && dropdownMenuRef.current.contains(target))
+      ) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleSearch = async (query: string) => {
     setSearch(query);
     if (query.trim()) {
-      const res = await fetch(`/api/courses?search=${encodeURIComponent(query)}&withStats=true`);
+      const res = await fetch(`/api/courses?search=${encodeURIComponent(query)}&withStats=true&includeInactive=true`);
       const data = await res.json();
       setCourses(data.courses || []);
     } else {
-      const res = await fetch('/api/courses?withStats=true');
+      const res = await fetch('/api/courses?withStats=true&includeInactive=true');
       const data = await res.json();
       setCourses(data.courses || []);
     }
@@ -153,17 +176,67 @@ export default function CoursesPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
+        
+        // If flyer file was selected during edit, upload it now
+        if (flyerFile) {
+          const formDataToSend = new FormData();
+          formDataToSend.append('flyer', flyerFile);
+          
+          const flyerResponse = await fetch(`/api/courses/${editingCourse.id}/flyer`, {
+            method: 'POST',
+            body: formDataToSend,
+          });
+          
+          if (!flyerResponse.ok) {
+            console.error('Failed to upload flyer');
+          }
+          // Clear flyer file after upload
+          setFlyerFile(null);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        }
       } else {
-        await fetch('/api/courses', {
+        // Create course first
+        const createResponse = await fetch('/api/courses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
+        
+        if (!createResponse.ok) {
+          const errorData = await createResponse.json();
+          console.error('Failed to create course:', errorData);
+          setSaving(false);
+          return;
+        }
+        
+        const createdCourse = await createResponse.json();
+        
+        // If flyer file was selected, upload it now
+        if (flyerFile) {
+          const formDataToSend = new FormData();
+          formDataToSend.append('flyer', flyerFile);
+          
+          const flyerResponse = await fetch(`/api/courses/${createdCourse.id}/flyer`, {
+            method: 'POST',
+            body: formDataToSend,
+          });
+          
+          if (!flyerResponse.ok) {
+            console.error('Failed to upload flyer');
+          }
+          // Clear flyer file after upload
+          setFlyerFile(null);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        }
       }
       
       setShowModal(false);
       // Refresh courses
-      const res = await fetch('/api/courses?withStats=true');
+      const res = await fetch('/api/courses?withStats=true&includeInactive=true');
       const data = await res.json();
       setCourses(data.courses || []);
     } catch (error) {
@@ -175,16 +248,19 @@ export default function CoursesPage() {
 
   const handleArchive = async (course: Course) => {
     const action = course.is_active ? t('actions.archive') : t('actions.restore');
+    const actionType = course.is_active ? 'archive' : 'restore';
     if (!confirm(`${action} ${t('nav.courses').toLowerCase()} "${course.title}"?`)) return;
     
     try {
-      if (course.is_active) {
-        await fetch(`/api/courses/${course.id}`, { method: 'DELETE' });
-      } else {
-        await fetch(`/api/courses/${course.id}`, { method: 'PATCH' });
-      }
+      await fetch(`/api/courses/${course.id}/archive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: actionType }),
+      });
       
-      const res = await fetch('/api/courses?withStats=true&includeInactive=true');
+      // Refresh courses based on current filter
+      const includeInactive = showArchived;
+      const res = await fetch(`/api/courses?withStats=true&includeInactive=true`);
       const data = await res.json();
       setCourses(data.courses || []);
     } catch (error) {
@@ -341,9 +417,13 @@ export default function CoursesPage() {
 
   if (!user) return null;
 
-  const filteredCourses = courses.filter(c => 
-    c.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredCourses = courses.filter(c => {
+    // Filter by archived status
+    if (showArchived) {
+      return c.is_active === 0 && c.title.toLowerCase().includes(search.toLowerCase());
+    }
+    return c.is_active === 1 && c.title.toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
     <Layout user={user}>
@@ -359,11 +439,66 @@ export default function CoursesPage() {
               style={{ maxWidth: '300px' }}
             />
           </div>
-          {user.role === 'admin' && (
-            <button className="btn btn-primary" onClick={handleCreate}>
-              + {t('modals.newCourse')}
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {/* Toggle switch for archived courses */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+              <span 
+                style={{ 
+                  fontSize: '0.8125rem', 
+                  fontWeight: !showArchived ? '600' : '400', 
+                  color: !showArchived ? '#111827' : '#9ca3af',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {t('status.active')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowArchived(!showArchived)}
+                style={{
+                  position: 'relative',
+                  width: '36px',
+                  height: '20px',
+                  backgroundColor: '#e5e7eb',
+                  borderRadius: '4px',
+                  border: '1px solid #d1d5db',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  margin: '0 0.375rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '2px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '14px',
+                    height: '14px',
+                    backgroundColor: showArchived ? '#6b7280' : '#374151',
+                    borderRadius: '3px',
+                    transition: 'all 0.2s',
+                    transform: showArchived ? 'translateX(18px)' : 'translateX(0)',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                  }}
+                />
+              </button>
+              <span 
+                style={{ 
+                  fontSize: '0.8125rem', 
+                  fontWeight: showArchived ? '600' : '400', 
+                  color: showArchived ? '#111827' : '#9ca3af',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {t('status.archived')}
+              </span>
+            </div>
+            {user.role === 'admin' && (
+              <button className="btn btn-primary" onClick={handleCreate}>
+                + {t('modals.newCourse')}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="table-container">
@@ -411,26 +546,190 @@ export default function CoursesPage() {
                     </td>
                     {user.role === 'admin' && (
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => handleEdit(course)}
-                          style={{ marginRight: '0.5rem' }}
-                        >
-                          {t('actions.edit')}
-                        </button>
-                        <button
-                          className={`btn btn-sm ${course.is_active ? 'btn-secondary' : 'btn-success'}`}
-                          onClick={() => handleArchive(course)}
-                          style={{ marginRight: '0.5rem' }}
-                        >
-                          {course.is_active ? t('actions.archive') : t('actions.restore')}
-                        </button>
-                        <button
-                          className="btn btn-danger btn-sm"
-                          onClick={() => handleDeleteClick(course)}
-                        >
-                          {t('actions.delete')}
-                        </button>
+                        <div style={{ display: 'inline-block' }}>
+                          <button
+                            ref={openDropdownId === course.id ? dropdownButtonRef : undefined}
+                            className="btn btn-secondary btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenDropdownId(openDropdownId === course.id ? null : course.id);
+                            }}
+                            style={{ 
+                              padding: '0.5rem',
+                              borderRadius: '0.5rem',
+                              backgroundColor: openDropdownId === course.id ? '#f3f4f6' : 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s',
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                              <circle cx="12" cy="5" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="12" cy="19" r="2" />
+                            </svg>
+                          </button>
+                          {openDropdownId === course.id && (
+                            <Portal anchorRef={dropdownButtonRef} menuRef={dropdownMenuRef} offsetY={6}>
+                              <div
+                                style={{
+                                  backgroundColor: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '0.75rem',
+                                  boxShadow: '0 10px 40px -10px rgba(0,0,0,0.15), 0 0 2px rgba(0,0,0,0.1)',
+                                  minWidth: '200px',
+                                  padding: '0.5rem',
+                                  zIndex: 50,
+                                  overflow: 'hidden',
+                                  animation: 'dropdownFadeIn 0.15s ease-out',
+                                }}
+                              >
+                                <style>{`
+                                  @keyframes dropdownFadeIn {
+                                    from { opacity: 0; transform: translateY(-8px); }
+                                    to { opacity: 1; transform: translateY(0); }
+                                  }
+                                `}</style>
+                                <a
+                                  href={`/courses/${course.id}`}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.625rem 0.75rem',
+                                    color: '#374151',
+                                    textDecoration: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = '#1f2937'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#374151'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#6b7280' }}>
+                                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                                  </svg>
+                                  Переглянути курс
+                                </a>
+                                <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '0.25rem 0' }} />
+                                <button
+                                  className="btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEdit(course);
+                                    setOpenDropdownId(null);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    width: '100%',
+                                    padding: '0.625rem 0.75rem',
+                                    color: '#374151',
+                                    textAlign: 'left',
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = '#1f2937'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#374151'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#6b7280' }}>
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                  Редагувати курс
+                                </button>
+                                <button
+                                  className="btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleArchive(course);
+                                    setOpenDropdownId(null);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    width: '100%',
+                                    padding: '0.625rem 0.75rem',
+                                    color: course.is_active ? '#374151' : '#059669',
+                                    textAlign: 'left',
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = course.is_active ? '#1f2937' : '#059669'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = course.is_active ? '#374151' : '#059669'; }}
+                                >
+                                  {course.is_active ? (
+                                    <>
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#6b7280' }}>
+                                        <polyline points="21 8 21 21 3 21 3 8" />
+                                        <rect x="1" y="3" width="22" height="5" />
+                                        <line x1="10" y1="12" x2="14" y2="12" />
+                                      </svg>
+                                      Архівувати курс
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#059669' }}>
+                                        <polyline points="1 4 1 10 7 10" />
+                                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                                      </svg>
+                                      Відновити курс
+                                    </>
+                                  )}
+                                </button>
+                                <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '0.25rem 0' }} />
+                                <button
+                                  className="btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteClick(course);
+                                    setOpenDropdownId(null);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    width: '100%',
+                                    padding: '0.625rem 0.75rem',
+                                    color: '#dc2626',
+                                    textAlign: 'left',
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fef2f2'; e.currentTarget.style.color = '#b91c1c'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#dc2626'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    <line x1="10" y1="11" x2="10" y2="17" />
+                                    <line x1="14" y1="11" x2="14" y2="17" />
+                                  </svg>
+                                  Видалити курс
+                                </button>
+                              </div>
+                            </Portal>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -524,119 +823,81 @@ export default function CoursesPage() {
                   ))}
                 </select>
               </div>
-              <div className="form-group">
-                <label className="form-label">{t('forms.courseProgram')}</label>
-                <textarea
-                  className="form-input"
-                  value={formData.program}
-                  onChange={(e) => setFormData({ ...formData, program: e.target.value })}
-                  placeholder={t('forms.courseProgramPlaceholder')}
-                  rows={4}
-                />
-              </div>
               
-              {/* Flyer upload section - only for editing existing courses */}
-              {editingCourse && (
-                <div className="form-group">
-                  <label className="form-label">{t('flyer.title')} ({t('flyer.formats')})</label>
-                  
-                  {/* Error message */}
-                  {flyerError && (
+              {/* Flyer upload section - available for both new and existing courses */}
+              <div className="form-group">
+                <label className="form-label">{t('flyer.title')} ({t('flyer.formats')})</label>
+                
+                {/* Error message */}
+                {flyerError && (
+                  <div style={{ 
+                    color: '#dc2626', 
+                    backgroundColor: '#fef2f2', 
+                    padding: '0.75rem', 
+                    borderRadius: '0.375rem',
+                    fontSize: '0.875rem',
+                    marginBottom: '0.75rem'
+                  }}>
+                    {flyerError}
+                  </div>
+                )}
+                
+                {/* Show existing flyer preview only when editing and flyer exists */}
+                {editingCourse && editingCourse.flyer_path ? (
+                  <div style={{ marginBottom: '1rem' }}>
                     <div style={{ 
-                      color: '#dc2626', 
-                      backgroundColor: '#fef2f2', 
-                      padding: '0.75rem', 
-                      borderRadius: '0.375rem',
-                      fontSize: '0.875rem',
-                      marginBottom: '0.75rem'
+                      position: 'relative', 
+                      display: 'inline-block',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      overflow: 'hidden'
                     }}>
-                      {flyerError}
+                      <img 
+                        src={editingCourse.flyer_path} 
+                        alt="Course flyer" 
+                        style={{ 
+                          maxWidth: '200px', 
+                          maxHeight: '200px', 
+                          display: 'block' 
+                        }} 
+                      />
                     </div>
-                  )}
-                  
-                  {/* Existing flyer preview */}
-                  {editingCourse.flyer_path ? (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ 
-                        position: 'relative', 
-                        display: 'inline-block',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '0.5rem',
-                        overflow: 'hidden'
-                      }}>
-                        <img 
-                          src={editingCourse.flyer_path} 
-                          alt="Course flyer" 
-                          style={{ 
-                            maxWidth: '200px', 
-                            maxHeight: '200px', 
-                            display: 'block' 
-                          }} 
-                        />
-                      </div>
-                      <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <a 
-                          href={editingCourse.flyer_path} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="btn btn-secondary btn-sm"
-                        >
-                          {t('flyer.openFlyer')}
-                        </a>
-                        <a 
-                          href={editingCourse.flyer_path} 
-                          download
-                          className="btn btn-secondary btn-sm"
-                        >
-                          {t('flyer.downloadFlyer')}
-                        </a>
-                        <button 
-                          type="button"
-                          className="btn btn-danger btn-sm"
-                          onClick={handleFlyerDelete}
-                          disabled={deletingFlyer}
-                        >
-                          {deletingFlyer ? t('flyer.deleting') : t('flyer.deleteFlyer')}
-                        </button>
-                      </div>
-                      {/* Change flyer option */}
-                      <div style={{ marginTop: '1rem' }}>
-                        <label className="form-label" style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-                          {t('flyer.changeFlyer')}:
-                        </label>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/jpeg,image/png"
-                          onChange={handleFileChange}
-                          style={{ marginTop: '0.25rem' }}
-                        />
-                        {flyerFile && (
-                          <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ fontSize: '0.875rem' }}>
-                              {flyerFile.name} ({(flyerFile.size / 1024).toFixed(1)} KB)
-                            </span>
-                            <button 
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              onClick={handleFlyerUpload}
-                              disabled={uploadingFlyer}
-                            >
-                              {uploadingFlyer ? t('flyer.uploading') : t('flyer.uploadFlyer')}
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <a 
+                        href={editingCourse.flyer_path} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary btn-sm"
+                      >
+                        {t('flyer.openFlyer')}
+                      </a>
+                      <a 
+                        href={editingCourse.flyer_path} 
+                        download
+                        className="btn btn-secondary btn-sm"
+                      >
+                        {t('flyer.downloadFlyer')}
+                      </a>
+                      <button 
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={handleFlyerDelete}
+                        disabled={deletingFlyer}
+                      >
+                        {deletingFlyer ? t('flyer.deleting') : t('flyer.deleteFlyer')}
+                      </button>
                     </div>
-                  ) : (
-                    /* File input for new flyer */
-                    <div>
+                    {/* Change flyer option */}
+                    <div style={{ marginTop: '1rem' }}>
+                      <label className="form-label" style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                        {t('flyer.changeFlyer')}:
+                      </label>
                       <input
                         ref={fileInputRef}
                         type="file"
                         accept="image/jpeg,image/png"
                         onChange={handleFileChange}
-                        style={{ marginBottom: '0.5rem' }}
+                        style={{ marginTop: '0.25rem' }}
                       />
                       {flyerFile && (
                         <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -654,9 +915,35 @@ export default function CoursesPage() {
                         </div>
                       )}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                ) : (
+                  /* File input for new flyer */
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      onChange={handleFileChange}
+                      style={{ marginBottom: '0.5rem' }}
+                    />
+                    {flyerFile && (
+                      <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.875rem' }}>
+                          {flyerFile.name} ({(flyerFile.size / 1024).toFixed(1)} KB)
+                        </span>
+                        <button 
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={handleFlyerUpload}
+                          disabled={uploadingFlyer}
+                        >
+                          {uploadingFlyer ? t('flyer.uploading') : t('flyer.uploadFlyer')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>

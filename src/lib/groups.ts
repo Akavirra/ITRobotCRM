@@ -180,13 +180,14 @@ export function getGroupWithDetailsById(id: number): GroupWithDetails | null {
   return group || null;
 }
 
-// Get groups filtered by course, teacher, status
+// Get groups filtered by course, teacher, status, days of week
 export function getGroupsFiltered(filters: {
   courseId?: number;
   teacherId?: number;
   status?: GroupStatus;
   search?: string;
   includeInactive?: boolean;
+  days?: number[];
 }): GroupWithDetails[] {
   let sql = `SELECT g.*, c.title as course_title, u.name as teacher_name,
     (SELECT COUNT(*) FROM student_groups sg WHERE sg.group_id = g.id AND sg.is_active = 1) as students_count
@@ -214,6 +215,11 @@ export function getGroupsFiltered(filters: {
   if (filters.status) {
     sql += ` AND g.status = ?`;
     params.push(filters.status);
+  }
+  
+  if (filters.days && filters.days.length > 0) {
+    sql += ` AND g.weekly_day IN (${filters.days.map(() => '?').join(',')})`;
+    params.push(...filters.days);
   }
   
   if (filters.search) {
@@ -348,14 +354,39 @@ export function updateGroupStatus(id: number, status: GroupStatus): void {
   );
 }
 
-// Archive group
+// Archive group - set status to inactive
 export function archiveGroup(id: number): void {
-  run(`UPDATE groups SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+  run(`UPDATE groups SET status = 'inactive', is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
 }
 
-// Restore group
+// Restore group - set status to active
 export function restoreGroup(id: number): void {
-  run(`UPDATE groups SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+  run(`UPDATE groups SET status = 'active', is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+}
+
+// Delete group permanently (only if no students, lessons, payments)
+export function deleteGroup(id: number): { success: boolean; error?: string } {
+  // Check if group has students
+  const students = all<{ id: number }>(`SELECT id FROM student_groups WHERE group_id = ?`, [id]);
+  if (students.length > 0) {
+    return { success: false, error: 'Неможливо видалити групу: є прив\'язані учні' };
+  }
+  
+  // Check if group has lessons
+  const lessons = all<{ id: number }>(`SELECT id FROM lessons WHERE group_id = ?`, [id]);
+  if (lessons.length > 0) {
+    return { success: false, error: 'Неможливо видалити групу: є прив\'язані заняття' };
+  }
+  
+  // Check if group has payments
+  const payments = all<{ id: number }>(`SELECT id FROM payments WHERE group_id = ?`, [id]);
+  if (payments.length > 0) {
+    return { success: false, error: 'Неможливо видалити групу: є прив\'язані платежі' };
+  }
+  
+  // Delete the group
+  run(`DELETE FROM groups WHERE id = ?`, [id]);
+  return { success: true };
 }
 
 // Get students in group

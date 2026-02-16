@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
     status?: GroupStatus;
     search?: string;
     includeInactive: boolean;
+    days?: number[];
   } = { includeInactive };
   
   if (courseId) filters.courseId = parseInt(courseId);
@@ -62,6 +63,15 @@ export async function GET(request: NextRequest) {
     filters.status = status;
   }
   if (search) filters.search = search;
+  
+  // Handle days filter (can be comma-separated or multiple params)
+  const daysParam = searchParams.get('days');
+  if (daysParam) {
+    const days = daysParam.split(',').map(d => parseInt(d)).filter(d => !isNaN(d) && d >= 1 && d <= 7);
+    if (days.length > 0) {
+      filters.days = days;
+    }
+  }
   
   if (user.role === 'teacher') {
     // Teachers only see their own groups

@@ -4,9 +4,11 @@ import {
   getGroupById, 
   getGroupWithDetailsById, 
   updateGroup, 
+  updateGroupStatus,
   archiveGroup, 
   restoreGroup, 
   getStudentsInGroup,
+  deleteGroup,
   validateTime,
   validateUrl,
   generateGroupTitle,
@@ -15,6 +17,8 @@ import {
   type UpdateGroupInput,
 } from '@/lib/groups';
 import { getCourseById } from '@/lib/courses';
+import { verifyPassword } from '@/lib/auth';
+import { get } from '@/db';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -115,7 +119,16 @@ export async function PUT(
       timezone,
     } = body;
     
-    // Validate required fields
+    // If only status is being updated, handle it separately
+    if (status && !course_id && !teacher_id && !weekly_day && !start_time) {
+      updateGroupStatus(groupId, status);
+      return NextResponse.json({ 
+        message: 'Статус групи успішно оновлено',
+        status,
+      });
+    }
+    
+    // Validate required fields for full update
     if (!course_id) {
       return NextResponse.json(
         { error: VALIDATION_ERRORS.courseRequired },
@@ -216,36 +229,87 @@ export async function PUT(
   }
 }
 
-// DELETE /api/groups/[id] - Archive group
+// DELETE /api/groups/[id] - Delete group with password confirmation (admin only)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const user = await getAuthUser(request);
-  
-  if (!user) {
-    return unauthorized();
+  try {
+    const user = await getAuthUser(request);
+    
+    if (!user) {
+      return unauthorized();
+    }
+    
+    if (!isAdmin(user)) {
+      return forbidden();
+    }
+    
+    const groupId = parseInt(params.id, 10);
+    
+    if (isNaN(groupId)) {
+      return NextResponse.json({ error: ERROR_MESSAGES.invalidGroupId }, { status: 400 });
+    }
+    
+    const existingGroup = getGroupById(groupId);
+    
+    if (!existingGroup) {
+      return notFound(ERROR_MESSAGES.groupNotFound);
+    }
+    
+    // Parse request body for password confirmation
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'Пароль обов\'язковий' },
+        { status: 400 }
+      );
+    }
+    
+    const { password } = body;
+    
+    // Validate password is provided
+    if (!password) {
+      return NextResponse.json(
+        { error: 'Пароль обов\'язковий' },
+        { status: 400 }
+      );
+    }
+    
+    // Get user's password hash from database
+    const userWithPassword = get<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = ?`,
+      [user.id]
+    );
+    
+    if (!userWithPassword) {
+      return unauthorized();
+    }
+    
+    // Verify password
+    const isValidPassword = await verifyPassword(password, userWithPassword.password_hash);
+    
+    if (!isValidPassword) {
+      return NextResponse.json({ error: 'Невірний пароль' }, { status: 401 });
+    }
+    
+    // Delete the group
+    const deleteResult = deleteGroup(groupId);
+    
+    if (!deleteResult.success) {
+      return NextResponse.json({ error: deleteResult.error }, { status: 409 });
+    }
+    
+    return NextResponse.json({ message: 'Групу успішно видалено' });
+  } catch (error) {
+    console.error('Delete group error:', error);
+    return NextResponse.json(
+      { error: 'Сталася помилка. Спробуйте ще раз.' },
+      { status: 500 }
+    );
   }
-  
-  if (!isAdmin(user)) {
-    return forbidden();
-  }
-  
-  const groupId = parseInt(params.id, 10);
-  
-  if (isNaN(groupId)) {
-    return NextResponse.json({ error: ERROR_MESSAGES.invalidGroupId }, { status: 400 });
-  }
-  
-  const existingGroup = getGroupById(groupId);
-  
-  if (!existingGroup) {
-    return notFound(ERROR_MESSAGES.groupNotFound);
-  }
-  
-  archiveGroup(groupId);
-  
-  return NextResponse.json({ message: 'Групу успішно архівовано' });
 }
 
 // PATCH /api/groups/[id] - Restore group
