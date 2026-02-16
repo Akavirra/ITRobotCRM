@@ -454,6 +454,29 @@ export function isStudentInGroup(studentId: number, groupId: number): boolean {
   return (result?.count || 0) > 0;
 }
 
+// Check if student was ever in group (including inactive)
+export function wasStudentInGroup(studentId: number, groupId: number): boolean {
+  const result = get<{ count: number }>(
+    `SELECT COUNT(*) as count FROM student_groups WHERE student_id = ? AND group_id = ?`,
+    [studentId, groupId]
+  );
+  return (result?.count || 0) > 0;
+}
+
+// Reactivate student in group (when they were removed before)
+export function reactivateStudentInGroup(studentId: number, groupId: number, joinDate?: string): number {
+  run(
+    `UPDATE student_groups SET is_active = 1, join_date = ?, leave_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE student_id = ? AND group_id = ? AND is_active = 0`,
+    [joinDate || new Date().toISOString().split('T')[0], studentId, groupId]
+  );
+  
+  const result = get<{ id: number }>(
+    `SELECT id FROM student_groups WHERE student_id = ? AND group_id = ? AND is_active = 1`,
+    [studentId, groupId]
+  );
+  return result?.id || 0;
+}
+
 // Search groups
 export function searchGroups(query: string, includeInactive: boolean = false): GroupWithDetails[] {
   return getGroupsFiltered({ search: query, includeInactive });

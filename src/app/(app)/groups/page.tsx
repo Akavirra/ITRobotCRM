@@ -38,7 +38,10 @@ interface Group {
   students_count: number;
   status: 'active' | 'graduate' | 'inactive';
   note: string | null;
+  photos_folder_url: string | null;
+  start_date: string | null;
   is_active: number;
+  created_at: string;
 }
 
 export default function GroupsPage() {
@@ -54,6 +57,7 @@ export default function GroupsPage() {
   const [courseFilter, setCourseFilter] = useState('');
   const [teacherFilter, setTeacherFilter] = useState('');
   const [daysFilter, setDaysFilter] = useState<number[]>([]);
+  const [monthsSort, setMonthsSort] = useState<'asc' | 'desc' | null>(null);
   
   // Dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
@@ -72,6 +76,37 @@ export default function GroupsPage() {
   
   // Status change
   const [changingStatus, setChangingStatus] = useState<number | null>(null);
+
+  // New Group Modal state
+  const [showNewGroupModal, setShowNewGroupModal] = useState(false);
+  const [newGroupCourseId, setNewGroupCourseId] = useState('');
+  const [newGroupTeacherId, setNewGroupTeacherId] = useState('');
+  const [newGroupWeeklyDay, setNewGroupWeeklyDay] = useState('');
+  const [newGroupStartTime, setNewGroupStartTime] = useState('');
+  const [newGroupStatus, setNewGroupStatus] = useState('active');
+  const [newGroupNote, setNewGroupNote] = useState('');
+  const [newGroupPhotosFolderUrl, setNewGroupPhotosFolderUrl] = useState('');
+  const [newGroupStartDate, setNewGroupStartDate] = useState('');
+  const [newGroupSaving, setNewGroupSaving] = useState(false);
+  const [newGroupError, setNewGroupError] = useState<string | null>(null);
+  const [newGroupTitlePreview, setNewGroupTitlePreview] = useState('');
+
+  // Edit Group Modal state
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [editGroup, setEditGroup] = useState<Group | null>(null);
+  const [editForm, setEditForm] = useState({
+    course_id: '',
+    teacher_id: '',
+    weekly_day: '',
+    start_time: '',
+    duration_minutes: 60,
+    monthly_price: 0,
+    status: 'active' as 'active' | 'graduate' | 'inactive',
+    note: '',
+    photos_folder_url: '',
+    start_date: '',
+  });
+  const [savingGroup, setSavingGroup] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -126,6 +161,45 @@ export default function GroupsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Update new group title preview when form changes
+  useEffect(() => {
+    if (newGroupCourseId && newGroupWeeklyDay && newGroupStartTime) {
+      const course = courses.find(c => c.id === parseInt(newGroupCourseId));
+      const dayShort = uk.daysShort[parseInt(newGroupWeeklyDay) as keyof typeof uk.daysShort];
+      if (course && dayShort) {
+        setNewGroupTitlePreview(`${dayShort} ${newGroupStartTime} ${course.title}`);
+      }
+    } else {
+      setNewGroupTitlePreview('');
+    }
+  }, [newGroupCourseId, newGroupWeeklyDay, newGroupStartTime, courses]);
+
+  // Set default start date when modal opens
+  useEffect(() => {
+    if (showNewGroupModal && !newGroupStartDate) {
+      const today = new Date().toISOString().split('T')[0];
+      setNewGroupStartDate(today);
+    }
+  }, [showNewGroupModal, newGroupStartDate]);
+
+  // Populate edit form when modal opens
+  useEffect(() => {
+    if (showEditGroupModal && editGroup) {
+      setEditForm({
+        course_id: String(editGroup.course_id),
+        teacher_id: String(editGroup.teacher_id),
+        weekly_day: String(editGroup.weekly_day),
+        start_time: editGroup.start_time,
+        duration_minutes: editGroup.duration_minutes,
+        monthly_price: editGroup.monthly_price,
+        status: editGroup.status,
+        note: editGroup.note || '',
+        photos_folder_url: editGroup.photos_folder_url || '',
+        start_date: editGroup.start_date || '',
+      });
+    }
+  }, [showEditGroupModal, editGroup]);
+
   const handleSearch = async (query: string) => {
     setSearch(query);
     applyFilters(query, courseFilter, teacherFilter, daysFilter);
@@ -169,6 +243,15 @@ export default function GroupsPage() {
     return uk.days[dayIndex as keyof typeof uk.days] || '';
   };
 
+  // Calculate months since group was created
+  const getMonthsSinceCreated = (createdAt: string) => {
+    if (!createdAt) return 0;
+    const created = new Date(createdAt);
+    const now = new Date();
+    const months = (now.getFullYear() - created.getFullYear()) * 12 + (now.getMonth() - created.getMonth());
+    return months > 0 ? months : 0;
+  };
+
   const getStatusLabel = (status: string) => {
     return uk.groupStatus[status as keyof typeof uk.groupStatus] || status;
   };
@@ -204,6 +287,106 @@ export default function GroupsPage() {
     } finally {
       setChangingStatus(null);
     }
+  };
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNewGroupError(null);
+
+    // Validation
+    if (!newGroupCourseId) {
+      setNewGroupError(uk.validation.selectCourse);
+      return;
+    }
+    if (!newGroupWeeklyDay) {
+      setNewGroupError(uk.validation.selectDay);
+      return;
+    }
+    if (!newGroupStartTime) {
+      setNewGroupError(uk.validation.selectTime);
+      return;
+    }
+    if (!newGroupTeacherId) {
+      setNewGroupError(uk.validation.selectTeacher);
+      return;
+    }
+
+    // Validate time format
+    const timeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+    if (!timeRegex.test(newGroupStartTime)) {
+      setNewGroupError(uk.validation.invalidTime);
+      return;
+    }
+
+    // Validate URL if provided
+    if (newGroupPhotosFolderUrl) {
+      try {
+        new URL(newGroupPhotosFolderUrl);
+      } catch {
+        setNewGroupError(uk.validation.invalidUrl);
+        return;
+      }
+    }
+
+    setNewGroupSaving(true);
+
+    try {
+      const res = await fetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: parseInt(newGroupCourseId),
+          teacher_id: parseInt(newGroupTeacherId),
+          weekly_day: parseInt(newGroupWeeklyDay),
+          start_time: newGroupStartTime,
+          status: newGroupStatus,
+          note: newGroupNote || null,
+          photos_folder_url: newGroupPhotosFolderUrl || null,
+          start_date: newGroupStartDate || null,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        // Close modal and refresh groups
+        setShowNewGroupModal(false);
+        resetNewGroupForm();
+        
+        // Refresh groups
+        const groupsRes = await fetch('/api/groups?includeInactive=true');
+        const groupsData = await groupsRes.json();
+        setGroups(groupsData.groups || []);
+        
+        // Navigate to new group
+        router.push(`/groups/${data.id}`);
+      } else {
+        setNewGroupError(data.error || uk.toasts.error);
+      }
+    } catch (error) {
+      console.error('Failed to create group:', error);
+      setNewGroupError(uk.toasts.error);
+    } finally {
+      setNewGroupSaving(false);
+    }
+  };
+
+  const resetNewGroupForm = () => {
+    setNewGroupCourseId('');
+    setNewGroupTeacherId('');
+    setNewGroupWeeklyDay('');
+    setNewGroupStartTime('');
+    setNewGroupStatus('active');
+    setNewGroupNote('');
+    setNewGroupPhotosFolderUrl('');
+    setNewGroupStartDate('');
+    setNewGroupError(null);
+    setNewGroupTitlePreview('');
+  };
+
+  const handleCloseNewGroupModal = () => {
+    setShowNewGroupModal(false);
+    resetNewGroupForm();
   };
 
   const handleArchive = async (group: Group) => {
@@ -284,22 +467,89 @@ export default function GroupsPage() {
     setDeleteError('');
   };
 
+  // Edit group handlers
+  const handleEditClick = (group: Group) => {
+    setEditGroup(group);
+    setShowEditGroupModal(true);
+    setOpenDropdownId(null);
+  };
+
+  const handleEditSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editGroup) return;
+    
+    // Validate required fields
+    if (!editForm.course_id || !editForm.teacher_id) {
+      alert('Будь ласка, оберіть курс та викладача');
+      return;
+    }
+    
+    setSavingGroup(true);
+    
+    try {
+      const res = await fetch(`/api/groups/${editGroup.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: parseInt(editForm.course_id),
+          teacher_id: parseInt(editForm.teacher_id),
+          weekly_day: parseInt(editForm.weekly_day),
+          start_time: editForm.start_time,
+          duration_minutes: editForm.duration_minutes,
+          status: editForm.status,
+          note: editForm.note || null,
+          photos_folder_url: editForm.photos_folder_url || null,
+          start_date: editForm.start_date || null,
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        // Update group in the list
+        setGroups(groups.map(g => g.id === editGroup.id ? data.group : g));
+        setShowEditGroupModal(false);
+        setEditGroup(null);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Помилка збереження');
+      }
+    } catch (error) {
+      console.error('Failed to save group:', error);
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditGroupModal(false);
+    setEditGroup(null);
+  };
+
   if (loading) {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>{uk.common.loading}</div>;
   }
 
   if (!user) return null;
 
-  // Filter groups based on archive toggle
-  const filteredGroups = groups.filter(group => {
-    if (showArchived) {
-      // Show inactive (archived) and graduate groups in archive view
-      return (group.status === 'inactive' || group.status === 'graduate') && 
-        group.title.toLowerCase().includes(search.toLowerCase());
-    }
-    // Show only active groups
-    return group.status === 'active' && group.title.toLowerCase().includes(search.toLowerCase());
-  });
+  // Filter groups based on archive toggle and sort by months
+  const filteredGroups = groups
+    .filter(group => {
+      if (showArchived) {
+        // Show inactive (archived) and graduate groups in archive view
+        return (group.status === 'inactive' || group.status === 'graduate') && 
+          group.title.toLowerCase().includes(search.toLowerCase());
+      }
+      // Show only active groups
+      return group.status === 'active' && group.title.toLowerCase().includes(search.toLowerCase());
+    })
+    .sort((a, b) => {
+      if (monthsSort === 'asc') {
+        return getMonthsSinceCreated(a.created_at) - getMonthsSinceCreated(b.created_at);
+      } else if (monthsSort === 'desc') {
+        return getMonthsSinceCreated(b.created_at) - getMonthsSinceCreated(a.created_at);
+      }
+      return 0;
+    });
 
   return (
     <Layout user={user}>
@@ -346,6 +596,36 @@ export default function GroupsPage() {
               ))}
             </select>
           )}
+
+          {/* Months sort button */}
+          <button
+            onClick={() => setMonthsSort(monthsSort === 'asc' ? 'desc' : monthsSort === 'desc' ? null : 'asc')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              padding: '0.5rem 0.875rem',
+              fontSize: '0.875rem',
+              fontWeight: monthsSort ? '600' : '400',
+              borderRadius: '0.375rem',
+              border: monthsSort ? '1px solid #374151' : '1px solid #e5e7eb',
+              backgroundColor: monthsSort ? '#374151' : 'white',
+              color: monthsSort ? 'white' : '#374151',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {monthsSort === 'asc' ? (
+                <path d="M12 5v14M5 12l7-7 7 7" />
+              ) : monthsSort === 'desc' ? (
+                <path d="M12 19V5M5 12l7 7 7-7" />
+              ) : (
+                <path d="M8 6l4 4 4-4M8 18l4-4 4 4" />
+              )}
+            </svg>
+            Місяців
+          </button>
 
           {/* Days of week filter - compact chips */}
           <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -426,7 +706,7 @@ export default function GroupsPage() {
               </span>
             </div>
             {user.role === 'admin' && (
-              <button className="btn btn-primary" onClick={() => router.push('/groups/new')}>
+              <button className="btn btn-primary" onClick={() => setShowNewGroupModal(true)}>
                 + {uk.actions.addGroup}
               </button>
             )}
@@ -444,6 +724,7 @@ export default function GroupsPage() {
                   <th>{uk.table.schedule}</th>
                   {user.role === 'admin' && <th>{uk.table.teacher}</th>}
                   <th style={{ textAlign: 'center' }}>{uk.table.students}</th>
+                  <th style={{ textAlign: 'center' }}>Місяців</th>
                   <th>{uk.common.status}</th>
                   <th>{uk.table.note}</th>
                   {user.role === 'admin' && <th style={{ textAlign: 'right' }}>{uk.common.actions}</th>}
@@ -469,6 +750,9 @@ export default function GroupsPage() {
                     </td>
                     {user.role === 'admin' && <td>{group.teacher_name}</td>}
                     <td style={{ textAlign: 'center' }}>{group.students_count}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 500, color: 'var(--gray-700)' }}>
+                      {getMonthsSinceCreated(group.created_at)}
+                    </td>
                     <td>
                       {user.role === 'admin' && changingStatus !== group.id ? (
                         <select
@@ -586,12 +870,17 @@ export default function GroupsPage() {
                                   Переглянути групу
                                 </a>
                                 <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '0.25rem 0' }} />
-                                <a
-                                  href={`/groups/${group.id}/edit`}
+                                <button
+                                  className="btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditClick(group);
+                                  }}
                                   style={{
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.75rem',
+                                    width: '100%',
                                     padding: '0.625rem 0.75rem',
                                     color: '#374151',
                                     textDecoration: 'none',
@@ -599,6 +888,9 @@ export default function GroupsPage() {
                                     fontWeight: '500',
                                     borderRadius: '0.5rem',
                                     transition: 'all 0.15s',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
                                   }}
                                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = '#1f2937'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#374151'; }}
@@ -608,7 +900,7 @@ export default function GroupsPage() {
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                   </svg>
                                   Редагувати групу
-                                </a>
+                                </button>
                                 <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '0.25rem 0' }} />
                                 <button
                                   className="btn"
@@ -670,7 +962,7 @@ export default function GroupsPage() {
                   : uk.emptyStates.noGroupsHint}
               </p>
               {user.role === 'admin' && (
-                <button className="btn btn-primary" onClick={() => router.push('/groups/new')}>
+                <button className="btn btn-primary" onClick={() => setShowNewGroupModal(true)}>
                   {uk.actions.addGroup}
                 </button>
               )}
@@ -730,6 +1022,525 @@ export default function GroupsPage() {
                 {deleting ? 'Видалення...' : 'Видалити'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Group Modal */}
+      {showEditGroupModal && editGroup && (
+        <div className="modal-overlay" onClick={handleCloseEditModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '550px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">Редагувати групу</h2>
+              <button className="modal-close" onClick={handleCloseEditModal}>×</button>
+            </div>
+            <form onSubmit={handleEditSave}>
+              <div className="modal-body">
+                <div style={{ marginBottom: '1rem' }}>
+                  <label className="form-label">Курс *</label>
+                  <select 
+                    className="form-select"
+                    value={editForm.course_id}
+                    onChange={(e) => setEditForm({...editForm, course_id: e.target.value})}
+                  >
+                    <option value="">Оберіть курс</option>
+                    {courses.map(course => (
+                      <option key={course.id} value={course.id}>{course.title}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label className="form-label">Викладач *</label>
+                  <select 
+                    className="form-select"
+                    value={editForm.teacher_id}
+                    onChange={(e) => setEditForm({...editForm, teacher_id: e.target.value})}
+                  >
+                    <option value="">Оберіть викладача</option>
+                    {teachers.map(teacher => (
+                      <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label className="form-label">День тижня</label>
+                    <select 
+                      className="form-select"
+                      value={editForm.weekly_day || ''}
+                      disabled
+                      style={{ backgroundColor: 'var(--gray-100)' }}
+                    >
+                      {[1,2,3,4,5,6,7].map(day => (
+                        <option key={day} value={day}>{uk.days[day as keyof typeof uk.days]}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="form-label">Час початку</label>
+                    <input 
+                      type="time" 
+                      className="form-input"
+                      value={editForm.start_time || ''}
+                      disabled
+                      style={{ backgroundColor: 'var(--gray-100)' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div>
+                    <label className="form-label">Тривалість (хв)</label>
+                    <input 
+                      type="number" 
+                      className="form-input"
+                      value={editForm.duration_minutes}
+                      onChange={(e) => setEditForm({...editForm, duration_minutes: parseInt(e.target.value) || 60})}
+                      min="15"
+                      step="15"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label">Статус</label>
+                    <select 
+                      className="form-select"
+                      value={editForm.status}
+                      onChange={(e) => setEditForm({...editForm, status: e.target.value as 'active' | 'graduate' | 'inactive'})}
+                    >
+                      <option value="active">Активна</option>
+                      <option value="graduate">Випуск</option>
+                      <option value="inactive">Неактивна</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label className="form-label">Посилання на Google Drive</label>
+                  <input 
+                    type="url" 
+                    className="form-input"
+                    value={editForm.photos_folder_url}
+                    onChange={(e) => setEditForm({...editForm, photos_folder_url: e.target.value})}
+                    placeholder="https://drive.google.com/..."
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Примітка</label>
+                  <textarea 
+                    className="form-input"
+                    value={editForm.note}
+                    onChange={(e) => setEditForm({...editForm, note: e.target.value})}
+                    rows={3}
+                    style={{ resize: 'vertical' }}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary"
+                  onClick={handleCloseEditModal}
+                >
+                  Скасувати
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={savingGroup}
+                >
+                  {savingGroup ? 'Збереження...' : 'Зберегти'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* New Group Modal */}
+      {showNewGroupModal && (
+        <div className="modal-overlay" onClick={handleCloseNewGroupModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '90vh' }}>
+            <div className="modal-header" style={{ 
+              padding: '1.25rem 1.5rem', 
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#f9fafb',
+              borderRadius: '12px 12px 0 0'
+            }}>
+              <h2 style={{ 
+                margin: 0, 
+                fontSize: '1.25rem', 
+                fontWeight: '600',
+                color: '#111827'
+              }}>
+                {uk.modals.newGroup}
+              </h2>
+              <button 
+                className="modal-close" 
+                onClick={handleCloseNewGroupModal}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.25rem',
+                  color: '#6b7280',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleCreateGroup}>
+              <div className="modal-body" style={{ 
+                padding: '1.5rem', 
+                overflowY: 'auto',
+                maxHeight: 'calc(90vh - 180px)'
+              }}>
+                {newGroupError && (
+                  <div style={{ 
+                    padding: '0.875rem 1rem', 
+                    marginBottom: '1.25rem', 
+                    backgroundColor: '#fef2f2', 
+                    color: '#dc2626', 
+                    borderRadius: '8px',
+                    border: '1px solid #fecaca',
+                    fontSize: '0.875rem'
+                  }}>
+                    {newGroupError}
+                  </div>
+                )}
+
+                {/* Title Preview */}
+                {newGroupTitlePreview && (
+                  <div style={{ 
+                    padding: '1rem', 
+                    marginBottom: '1.5rem', 
+                    backgroundColor: '#eff6ff', 
+                    borderRadius: '8px',
+                    border: '1px solid #bfdbfe'
+                  }}>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#1d4ed8', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.025em' }}>
+                      {uk.forms.groupTitle}
+                    </p>
+                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '1.1rem', fontWeight: '600', color: '#1e40af' }}>
+                      {newGroupTitlePreview}
+                    </p>
+                  </div>
+                )}
+
+                {/* Course Selection */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '500', 
+                    color: '#374151',
+                    fontSize: '0.9rem'
+                  }}>
+                    {uk.forms.course} <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <select
+                    className="form-input"
+                    value={newGroupCourseId}
+                    onChange={(e) => setNewGroupCourseId(e.target.value)}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.625rem 0.875rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem',
+                      backgroundColor: '#fff',
+                      transition: 'border-color 0.2s, box-shadow 0.2s'
+                    }}
+                  >
+                    <option value="">{uk.forms.selectCourse}</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Day and Time */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(2, 1fr)', 
+                  gap: '1rem', 
+                  marginBottom: '1.25rem' 
+                }}>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontWeight: '500', 
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      {uk.forms.dayOfWeek} <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <select
+                      className="form-input"
+                      value={newGroupWeeklyDay}
+                      onChange={(e) => setNewGroupWeeklyDay(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.625rem 0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#fff'
+                      }}
+                    >
+                      <option value="">{uk.forms.selectDay}</option>
+                      {Object.entries(uk.days).map(([key, value]) => (
+                        <option key={key} value={key}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontWeight: '500', 
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      {uk.forms.startTime} <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="time"
+                      className="form-input"
+                      value={newGroupStartTime}
+                      onChange={(e) => setNewGroupStartTime(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.625rem 0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#fff'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Teacher and Status */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(2, 1fr)', 
+                  gap: '1rem', 
+                  marginBottom: '1.25rem' 
+                }}>
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontWeight: '500', 
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      {uk.forms.teacher} <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <select
+                      className="form-input"
+                      value={newGroupTeacherId}
+                      onChange={(e) => setNewGroupTeacherId(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.625rem 0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#fff'
+                      }}
+                    >
+                      <option value="">{uk.forms.selectTeacher}</option>
+                      {teachers.map((teacher) => (
+                        <option key={teacher.id} value={teacher.id}>
+                          {teacher.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ 
+                      display: 'block', 
+                      marginBottom: '0.5rem', 
+                      fontWeight: '500', 
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      {uk.common.status} <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <select
+                      className="form-input"
+                      value={newGroupStatus}
+                      onChange={(e) => setNewGroupStatus(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.625rem 0.875rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        backgroundColor: '#fff'
+                      }}
+                    >
+                      <option value="active">{uk.groupStatus.active}</option>
+                      <option value="graduate">{uk.groupStatus.graduate}</option>
+                      <option value="inactive">{uk.groupStatus.inactive}</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Start Date */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '500', 
+                    color: '#374151',
+                    fontSize: '0.9rem'
+                  }}>
+                    {uk.forms.startDate}
+                  </label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={newGroupStartDate}
+                    onChange={(e) => setNewGroupStartDate(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.625rem 0.875rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem',
+                      backgroundColor: '#fff'
+                    }}
+                  />
+                </div>
+
+                {/* Note */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '500', 
+                    color: '#374151',
+                    fontSize: '0.9rem'
+                  }}>
+                    {uk.forms.note}
+                  </label>
+                  <textarea
+                    className="form-input"
+                    value={newGroupNote}
+                    onChange={(e) => setNewGroupNote(e.target.value)}
+                    rows={2}
+                    placeholder={uk.common.note}
+                    style={{
+                      width: '100%',
+                      padding: '0.625rem 0.875rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem',
+                      backgroundColor: '#fff',
+                      resize: 'vertical',
+                      minHeight: '60px'
+                    }}
+                  />
+                </div>
+
+                {/* Photos Folder URL */}
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    fontWeight: '500', 
+                    color: '#374151',
+                    fontSize: '0.9rem'
+                  }}>
+                    {uk.forms.photosFolderUrl}
+                  </label>
+                  <input
+                    type="url"
+                    className="form-input"
+                    value={newGroupPhotosFolderUrl}
+                    onChange={(e) => setNewGroupPhotosFolderUrl(e.target.value)}
+                    placeholder={uk.forms.photosFolderPlaceholder}
+                    style={{
+                      width: '100%',
+                      padding: '0.625rem 0.875rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem',
+                      backgroundColor: '#fff'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{ 
+                padding: '1rem 1.5rem', 
+                borderTop: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.75rem',
+                backgroundColor: '#f9fafb',
+                borderRadius: '0 0 12px 12px'
+              }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleCloseNewGroupModal}
+                  disabled={newGroupSaving}
+                  style={{
+                    padding: '0.625rem 1.25rem',
+                    borderRadius: '8px',
+                    fontWeight: '500',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  {uk.actions.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={newGroupSaving}
+                  style={{
+                    padding: '0.625rem 1.5rem',
+                    borderRadius: '8px',
+                    fontWeight: '500',
+                    fontSize: '0.9rem',
+                    backgroundColor: '#2563eb'
+                  }}
+                >
+                  {newGroupSaving ? uk.common.saving : uk.actions.create}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

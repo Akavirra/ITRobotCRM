@@ -135,11 +135,53 @@ export const uk = {
 
     // Student form
     fullName: 'П.І.Б.',
+    firstName: "Ім'я",
+    lastName: 'Прізвище',
     phone: 'Телефон',
     parentName: "Ім'я батька",
     parentPhone: 'Телефон батька',
     fullNamePlaceholder: 'Повне ім\'я',
     phonePlaceholder: '+380...',
+    
+    // New student form fields
+    birthDate: 'Дата народження',
+    birthDatePlaceholder: 'дд.мм.рррр',
+    school: 'Навчальний заклад',
+    schoolPlaceholder: 'Назва навчального закладу',
+    discount: 'Знижка (%)',
+    discountPlaceholder: '0',
+    photo: 'Фото дитини',
+    uploadPhoto: 'Завантажити фото',
+    changePhoto: 'Змінити фото',
+    removePhoto: 'Видалити фото',
+    
+    // Contact info
+    mainPhone: 'Основний контакт',
+    additionalPhone: 'Додатковий контакт',
+    contactName: 'П.І.Б. контактної особи',
+    contactNamePlaceholder: "Повне ім'я контактної особи",
+    whoIsThis: 'Ступінь спорідненості',
+    whoIsThisPlaceholder: 'Оберіть',
+    relationMother: 'Мама',
+    relationFather: 'Тато',
+    relationGrandmother: 'Бабуся',
+    relationGrandfather: 'Дідусь',
+    relationOther: 'Інше',
+    relationOtherPlaceholder: 'Вкажіть ступінь спорідненості',
+    
+    // Additional info
+    additionalInfo: 'Додаткова інформація',
+    interestedCourses: 'Цікаві курси',
+    interestedCoursesPlaceholder: 'Оберіть курс',
+    source: 'Звідки дізналися про нас',
+    sourcePlaceholder: 'Оберіть',
+    
+    // Source options
+    sourceSocial: 'Соціальні мережі',
+    sourceFriends: 'Знайомі/Рекомендації',
+    sourceFlyers: 'Флаєри',
+    sourceSearch: 'Пошук в інтернеті',
+    sourceOther: 'Інше',
 
     // User form
     name: "Ім'я",
@@ -161,6 +203,7 @@ export const uk = {
     monthlyPrice: 'Ціна/місяць',
     pricePlaceholder: '0 UAH',
     note: 'Примітка',
+    notePlaceholder: 'Введіть примітку',
     photosFolderUrl: 'Посилання на Google Drive',
     photosFolderPlaceholder: 'https://drive.google.com/...',
     selectCourse: "Оберіть курс",
@@ -171,7 +214,7 @@ export const uk = {
     // Filters
     month: 'Місяць',
     group: 'Група',
-    startDate: 'Початкова дата',
+    startDate: 'Дата початку навчання',
     endDate: 'Кінцева дата',
   },
 
@@ -290,13 +333,21 @@ export const uk = {
     newCourse: 'Новий курс',
     editCourse: 'Редагувати курс',
     newStudent: 'Новий учень',
-    editStudent: 'Редагувати учня',
+    editStudent: 'Редагувати дані учня',
     newUser: 'Новий користувач',
     newGroup: 'Нова група',
     editGroup: 'Редагувати групу',
     confirmArchive: 'Архівувати?',
     confirmRestore: 'Відновити?',
     addStudentToGroup: 'Додати учня до групи',
+  },
+
+  // Form sections
+  formSections: {
+    studentInfo: 'Дані учня',
+    contactInfo: 'Контактна інформація',
+    additionalContact: 'Додатковий контакт',
+    additionalInfo: 'Додатково',
   },
 
   // Group tabs
@@ -378,6 +429,11 @@ export const uk = {
       one: 'хвилина',
       few: 'хвилини',
       many: 'хвилин',
+    },
+    month: {
+      one: 'місяць',
+      few: 'місяці',
+      many: 'місяців',
     },
   },
 

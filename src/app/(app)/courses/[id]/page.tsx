@@ -36,6 +36,7 @@ interface CourseGroup {
   teacher_id: number;
   status: string;
   teacher_name: string | null;
+  created_at: string;
 }
 
 interface CourseStudent {
@@ -416,6 +417,15 @@ export default function CourseDetailsPage() {
   // Helper functions for groups
   const getDayName = (dayIndex: number) => {
     return uk.days[dayIndex as keyof typeof uk.days] || '';
+  };
+
+  // Calculate months since group was created
+  const getMonthsSinceCreated = (createdAt: string) => {
+    if (!createdAt) return 0;
+    const created = new Date(createdAt);
+    const now = new Date();
+    const months = (now.getFullYear() - created.getFullYear()) * 12 + (now.getMonth() - created.getMonth());
+    return months > 0 ? months : 0;
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -913,6 +923,10 @@ export default function CourseDetailsPage() {
                                   {group.teacher_name}
                                 </>
                               )}
+                              <span style={{ color: 'var(--gray-300)' }}>•</span>
+                              <span style={{ color: 'var(--gray-500)', fontWeight: 500 }}>
+                                {getMonthsSinceCreated(group.created_at)} {uk.plural.month.many}
+                              </span>
                             </div>
                           </div>
                         </div>

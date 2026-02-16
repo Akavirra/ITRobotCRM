@@ -80,7 +80,21 @@ export async function PUT(
   
   try {
     const body = await request.json();
-    const { full_name, phone, parent_name, parent_phone, notes } = body;
+    const { 
+      full_name, 
+      phone, 
+      parent_name, 
+      parent_phone, 
+      notes,
+      birth_date,
+      school,
+      discount,
+      parent_relation,
+      parent2_name,
+      parent2_relation,
+      interested_courses,
+      source
+    } = body;
     
     if (!full_name || full_name.trim().length === 0) {
       return NextResponse.json(

@@ -17,6 +17,7 @@ interface CourseGroup {
   teacher_id: number;
   status: string;
   teacher_name: string | null;
+  created_at: string;
 }
 
 // GET /api/courses/[id]/groups - Get groups for a course
@@ -38,7 +39,7 @@ export async function GET(
   
   // Fetch groups for the course with teacher name join
   const groups = all<CourseGroup>(
-    `SELECT g.id, g.public_id, g.title, g.weekly_day, g.start_time, g.teacher_id, g.status, u.name as teacher_name
+    `SELECT g.id, g.public_id, g.title, g.weekly_day, g.start_time, g.teacher_id, g.status, u.name as teacher_name, g.created_at
      FROM groups g
      LEFT JOIN users u ON g.teacher_id = u.id
      WHERE g.course_id = ?

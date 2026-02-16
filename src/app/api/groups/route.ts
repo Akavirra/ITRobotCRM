@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
       weekly_day: dayNum,
       start_time,
       duration_minutes: 90,
-      start_date,
+      start_date: start_date || null,
       end_date,
       capacity: capacity ? parseInt(capacity) : undefined,
       monthly_price: 0,

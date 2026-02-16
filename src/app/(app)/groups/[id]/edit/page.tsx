@@ -138,34 +138,9 @@ export default function EditGroupPage() {
       setError(uk.validation.selectCourse);
       return;
     }
-    if (!weeklyDay) {
-      setError(uk.validation.selectDay);
-      return;
-    }
-    if (!startTime) {
-      setError(uk.validation.selectTime);
-      return;
-    }
     if (!teacherId) {
       setError(uk.validation.selectTeacher);
       return;
-    }
-
-    // Validate time format
-    const timeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
-    if (!timeRegex.test(startTime)) {
-      setError(uk.validation.invalidTime);
-      return;
-    }
-
-    // Validate URL if provided
-    if (photosFolderUrl) {
-      try {
-        new URL(photosFolderUrl);
-      } catch {
-        setError(uk.validation.invalidUrl);
-        return;
-      }
     }
 
     setSaving(true);
@@ -177,7 +152,7 @@ export default function EditGroupPage() {
         body: JSON.stringify({
           course_id: parseInt(courseId),
           teacher_id: parseInt(teacherId),
-          weekly_day: parseInt(weeklyDay),
+          weekly_day: weeklyDay ? parseInt(weeklyDay) : undefined,
           start_time: startTime,
           status,
           note: note || null,
@@ -278,13 +253,13 @@ export default function EditGroupPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
             <div>
               <label className="form-label" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                {uk.forms.dayOfWeek} *
+                {uk.forms.dayOfWeek}
               </label>
               <select
                 className="form-input"
                 value={weeklyDay}
-                onChange={(e) => setWeeklyDay(e.target.value)}
-                required
+                disabled
+                style={{ backgroundColor: '#f3f4f6' }}
               >
                 <option value="">{uk.forms.selectDay}</option>
                 {Object.entries(uk.days).map(([key, value]) => (
@@ -297,14 +272,14 @@ export default function EditGroupPage() {
 
             <div>
               <label className="form-label" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                {uk.forms.startTime} *
+                {uk.forms.startTime}
               </label>
               <input
                 type="time"
                 className="form-input"
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
+                disabled
+                style={{ backgroundColor: '#f3f4f6' }}
               />
             </div>
           </div>

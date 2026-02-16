@@ -148,23 +148,36 @@ export function deleteStudent(id: number): void {
 }
 
 // Search students
-export function searchStudents(query: string, includeInactive: boolean = false): Array<Student & { groups_count: number }> {
+export function searchStudents(query: string, includeInactive: boolean = false, limit?: number): Array<Student & { groups_count: number }> {
   const searchTerm = `%${query}%`;
+  const limitClause = limit ? `LIMIT ${limit}` : '';
   const sql = includeInactive
     ? `SELECT s.*, COUNT(DISTINCT sg.id) as groups_count
        FROM students s
        LEFT JOIN student_groups sg ON s.id = sg.student_id AND sg.is_active = 1
        WHERE s.full_name LIKE ? OR s.phone LIKE ? OR s.parent_name LIKE ? OR s.parent_phone LIKE ?
        GROUP BY s.id
-       ORDER BY s.full_name`
+       ORDER BY s.full_name ${limitClause}`
     : `SELECT s.*, COUNT(DISTINCT sg.id) as groups_count
        FROM students s
        LEFT JOIN student_groups sg ON s.id = sg.student_id AND sg.is_active = 1
        WHERE s.is_active = 1 AND (s.full_name LIKE ? OR s.phone LIKE ? OR s.parent_name LIKE ? OR s.parent_phone LIKE ?)
        GROUP BY s.id
-       ORDER BY s.full_name`;
+       ORDER BY s.full_name ${limitClause}`;
   
   return all<Student & { groups_count: number }>(sql, [searchTerm, searchTerm, searchTerm, searchTerm]);
+}
+
+// Quick search for autocomplete - returns basic student info
+export function quickSearchStudents(query: string, limit: number = 10): Student[] {
+  const searchTerm = `%${query}%`;
+  const sql = `SELECT id, public_id, full_name, phone, parent_name, parent_phone 
+               FROM students 
+               WHERE is_active = 1 AND (full_name LIKE ? OR phone LIKE ?)
+               ORDER BY full_name
+               LIMIT ?`;
+  
+  return all<Student>(sql, [searchTerm, searchTerm, limit]);
 }
 
 // Get student attendance history

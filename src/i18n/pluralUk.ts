@@ -104,4 +104,9 @@ export const ukPlurals = {
     few: 'хвилини',
     many: 'хвилин',
   },
+  month: {
+    one: 'місяць',
+    few: 'місяці',
+    many: 'місяців',
+  },
 } as const;

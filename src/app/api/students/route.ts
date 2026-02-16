@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, unauthorized, isAdmin, forbidden } from '@/lib/api-utils';
-import { getStudentsWithGroupCount, getStudents, createStudent, searchStudents } from '@/lib/students';
+import { getStudentsWithGroupCount, getStudents, createStudent, searchStudents, quickSearchStudents } from '@/lib/students';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -28,9 +28,19 @@ export async function GET(request: NextRequest) {
   const withGroupCount = searchParams.get('withGroupCount') === 'true';
   
   let students;
+  const autocompleteLimit = 10;
   
   if (search) {
-    students = searchStudents(search, includeInactive);
+    // Check if this is an autocomplete request (has limit param)
+    const url = new URL(request.url);
+    const limitParam = url.searchParams.get('limit');
+    
+    if (limitParam) {
+      const limit = parseInt(limitParam, 10);
+      students = quickSearchStudents(search, limit);
+    } else {
+      students = searchStudents(search, includeInactive);
+    }
   } else if (withGroupCount) {
     students = getStudentsWithGroupCount(includeInactive);
   } else {
@@ -56,7 +66,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     // SECURITY: Explicitly ignore any client-provided public_id
     // The createStudent function always generates a unique server-side public_id
-    const { full_name, phone, parent_name, parent_phone, notes } = body;
+    const { 
+      full_name, 
+      phone, 
+      parent_name, 
+      parent_phone, 
+      notes,
+      birth_date,
+      school,
+      discount,
+      parent_relation,
+      parent2_name,
+      parent2_relation,
+      interested_courses,
+      source
+    } = body;
     
     if (!full_name || full_name.trim().length === 0) {
       return NextResponse.json(

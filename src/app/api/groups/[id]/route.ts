@@ -216,9 +216,12 @@ export async function PUT(
     
     updateGroup(groupId, input);
     
+    // Get updated group with details
+    const updatedGroup = getGroupWithDetailsById(groupId);
+    
     return NextResponse.json({ 
       message: 'Групу успішно оновлено',
-      title,
+      group: updatedGroup,
     });
   } catch (error) {
     console.error('Update group error:', error);

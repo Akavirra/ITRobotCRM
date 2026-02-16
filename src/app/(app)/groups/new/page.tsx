@@ -40,6 +40,7 @@ export default function NewGroupPage() {
   const [status, setStatus] = useState('active');
   const [note, setNote] = useState('');
   const [photosFolderUrl, setPhotosFolderUrl] = useState('');
+  const [startDate, setStartDate] = useState('');
 
   // Generated title preview
   const [titlePreview, setTitlePreview] = useState('');
@@ -89,6 +90,12 @@ export default function NewGroupPage() {
 
     fetchData();
   }, [router, searchParams]);
+
+  // Set default start date to today when component mounts
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    setStartDate(today);
+  }, []);
 
   // Update title preview when form changes
   useEffect(() => {
@@ -156,6 +163,7 @@ export default function NewGroupPage() {
           status,
           note: note || null,
           photos_folder_url: photosFolderUrl || null,
+          start_date: startDate || null,
         }),
       });
 
@@ -311,6 +319,19 @@ export default function NewGroupPage() {
                 <option value="inactive">{uk.groupStatus.inactive}</option>
               </select>
             </div>
+          </div>
+
+          {/* Start Date */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label className="form-label" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+              {uk.forms.startDate}
+            </label>
+            <input
+              type="date"
+              className="form-input"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
           </div>
 
           {/* Optional fields */}

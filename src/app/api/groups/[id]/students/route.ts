@@ -6,6 +6,8 @@ import {
   removeStudentFromGroup,
   removeStudentFromGroupByIDs,
   isStudentInGroup,
+  wasStudentInGroup,
+  reactivateStudentInGroup,
 } from '@/lib/groups';
 
 // Ukrainian error messages
@@ -93,6 +95,15 @@ export async function POST(
         { error: ERROR_MESSAGES.studentAlreadyInGroup },
         { status: 400 }
       );
+    }
+    
+    // Check if student was previously in group (inactive) - reactivate them
+    if (wasStudentInGroup(studentId, groupId)) {
+      const studentGroupId = reactivateStudentInGroup(studentId, groupId, join_date);
+      return NextResponse.json({
+        id: studentGroupId,
+        message: 'Учня успішно повторно додано до групи',
+      });
     }
     
     const studentGroupId = addStudentToGroup(
