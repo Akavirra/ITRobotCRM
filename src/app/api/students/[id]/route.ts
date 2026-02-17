@@ -93,7 +93,8 @@ export async function PUT(
       parent2_name,
       parent2_relation,
       interested_courses,
-      source
+      source,
+      photo
     } = body;
     
     if (!full_name || full_name.trim().length === 0) {
@@ -109,7 +110,16 @@ export async function PUT(
       phone?.trim(),
       parent_name?.trim(),
       parent_phone?.trim(),
-      notes?.trim()
+      notes?.trim(),
+      birth_date,
+      photo || undefined,
+      school?.trim(),
+      discount?.trim(),
+      parent_relation?.trim(),
+      parent2_name?.trim(),
+      parent2_relation?.trim(),
+      interested_courses,
+      source?.trim()
     );
     
     return NextResponse.json({ message: 'Дані учня успішно оновлено' });

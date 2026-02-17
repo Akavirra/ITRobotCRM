@@ -399,6 +399,7 @@ export function getStudentsInGroup(groupId: number): Array<{
   parent_phone: string | null;
   join_date: string;
   student_group_id: number;
+  photo: string | null;
 }> {
   return all<{
     id: number;
@@ -409,8 +410,9 @@ export function getStudentsInGroup(groupId: number): Array<{
     parent_phone: string | null;
     join_date: string;
     student_group_id: number;
+    photo: string | null;
   }>(
-    `SELECT s.id, s.public_id, s.full_name, s.phone, s.parent_name, s.parent_phone, sg.join_date, sg.id as student_group_id
+    `SELECT s.id, s.public_id, s.full_name, s.phone, s.parent_name, s.parent_phone, sg.join_date, sg.id as student_group_id, s.photo
      FROM students s
      JOIN student_groups sg ON s.id = sg.student_id
      WHERE sg.group_id = ? AND sg.is_active = 1

@@ -9,6 +9,15 @@ export interface Student {
   parent_name: string | null;
   parent_phone: string | null;
   notes: string | null;
+  birth_date: string | null;
+  photo: string | null;
+  school: string | null;
+  discount: string | null;
+  parent_relation: string | null;
+  parent2_name: string | null;
+  parent2_relation: string | null;
+  interested_courses: string | null;
+  source: string | null;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -106,12 +115,21 @@ export function createStudent(
   phone?: string,
   parentName?: string,
   parentPhone?: string,
-  notes?: string
+  notes?: string,
+  birthDate?: string,
+  photo?: string,
+  school?: string,
+  discount?: string,
+  parentRelation?: string,
+  parent2Name?: string,
+  parent2Relation?: string,
+  interestedCourses?: string,
+  source?: string
 ): { id: number; public_id: string } {
   const publicId = generateUniquePublicId('student', isPublicIdUnique);
   const result = run(
-    `INSERT INTO students (public_id, full_name, phone, parent_name, parent_phone, notes) VALUES (?, ?, ?, ?, ?, ?)`,
-    [publicId, fullName, phone || null, parentName || null, parentPhone || null, notes || null]
+    `INSERT INTO students (public_id, full_name, phone, parent_name, parent_phone, notes, birth_date, photo, school, discount, parent_relation, parent2_name, parent2_relation, interested_courses, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [publicId, fullName, phone || null, parentName || null, parentPhone || null, notes || null, birthDate || null, photo || null, school || null, discount || null, parentRelation || null, parent2Name || null, parent2Relation || null, interestedCourses || null, source || null]
   );
   
   return { id: Number(result.lastInsertRowid), public_id: publicId };
@@ -124,11 +142,20 @@ export function updateStudent(
   phone?: string,
   parentName?: string,
   parentPhone?: string,
-  notes?: string
+  notes?: string,
+  birthDate?: string,
+  photo?: string,
+  school?: string,
+  discount?: string,
+  parentRelation?: string,
+  parent2Name?: string,
+  parent2Relation?: string,
+  interestedCourses?: string,
+  source?: string
 ): void {
   run(
-    `UPDATE students SET full_name = ?, phone = ?, parent_name = ?, parent_phone = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-    [fullName, phone || null, parentName || null, parentPhone || null, notes || null, id]
+    `UPDATE students SET full_name = ?, phone = ?, parent_name = ?, parent_phone = ?, notes = ?, birth_date = ?, photo = ?, school = ?, discount = ?, parent_relation = ?, parent2_name = ?, parent2_relation = ?, interested_courses = ?, source = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [fullName, phone || null, parentName || null, parentPhone || null, notes || null, birthDate || null, photo || null, school || null, discount || null, parentRelation || null, parent2Name || null, parent2Relation || null, interestedCourses || null, source || null, id]
   );
 }
 
@@ -171,7 +198,7 @@ export function searchStudents(query: string, includeInactive: boolean = false, 
 // Quick search for autocomplete - returns basic student info
 export function quickSearchStudents(query: string, limit: number = 10): Student[] {
   const searchTerm = `%${query}%`;
-  const sql = `SELECT id, public_id, full_name, phone, parent_name, parent_phone 
+  const sql = `SELECT id, public_id, full_name, phone, parent_name, parent_phone, photo 
                FROM students 
                WHERE is_active = 1 AND (full_name LIKE ? OR phone LIKE ?)
                ORDER BY full_name

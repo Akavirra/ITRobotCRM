@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
+import Portal from '@/components/Portal';
 import { t } from '@/i18n/t';
 
 interface User {
@@ -19,6 +20,16 @@ interface Student {
   phone: string | null;
   parent_name: string | null;
   parent_phone: string | null;
+  notes: string | null;
+  birth_date: string | null;
+  photo: string | null;
+  school: string | null;
+  discount: string | null;
+  parent_relation: string | null;
+  parent2_name: string | null;
+  parent2_relation: string | null;
+  interested_courses: string | null;
+  source: string | null;
   groups_count: number;
   is_active: number;
 }
@@ -40,8 +51,9 @@ interface StudentFormData {
   parent2_relation: string;
   parent2_relation_other: string;
   notes: string;
-  interested_courses: string;
+  interested_courses: string[];
   source: string;
+  source_other: string;
 }
 
 interface AutocompleteStudent {
@@ -62,7 +74,6 @@ const RELATION_OPTIONS = [
 const SOURCE_OPTIONS = [
   { value: 'social', label: t('forms.sourceSocial') },
   { value: 'friends', label: t('forms.sourceFriends') },
-  { value: 'flyers', label: t('forms.sourceFlyers') },
   { value: 'search', label: t('forms.sourceSearch') },
   { value: 'other', label: t('forms.sourceOther') },
 ];
@@ -93,6 +104,27 @@ function formatPhoneNumber(value: string): string {
   return phoneDigits;
 }
 
+// Calculate age from birth date
+function calculateAge(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  
+  const today = new Date();
+  const birth = new Date(birthDate);
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  
+  return age >= 0 ? age : null;
+}
+
+// Get first letter of name for avatar
+function getFirstLetter(name: string): string {
+  return name.trim().charAt(0).toUpperCase();
+}
+
 export default function StudentsPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,11 +152,16 @@ export default function StudentsPage() {
     parent2_relation: '',
     parent2_relation_other: '',
     notes: '',
-    interested_courses: '',
+    interested_courses: [],
     source: '',
+    source_other: '',
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement | null>(null);
   
   // Autocomplete state
   const [nameSuggestions, setNameSuggestions] = useState<AutocompleteStudent[]>([]);
@@ -144,6 +181,7 @@ export default function StudentsPage() {
 
   // Courses for dropdown
   const [courses, setCourses] = useState<Course[]>([]);
+  const [coursesDropdownOpen, setCoursesDropdownOpen] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -182,7 +220,18 @@ export default function StudentsPage() {
     }
   };
 
-  // Search for student name autocomplete
+  // Copy phone to clipboard
+  const copyPhone = async (phone: string | null, type: 'main' | 'parent') => {
+    if (!phone) return;
+    
+    try {
+      await navigator.clipboard.writeText(phone);
+      setCopiedPhone(`${type}-${phone}`);
+      setTimeout(() => setCopiedPhone(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
   const searchStudentNames = async (query: string) => {
     if (query.length < 2) {
       setNameSuggestions([]);
@@ -364,8 +413,9 @@ export default function StudentsPage() {
       parent2_relation: '',
       parent2_relation_other: '',
       notes: '',
-      interested_courses: '',
+      interested_courses: [],
       source: '',
+      source_other: '',
     });
     setErrors({});
     setNameSuggestions([]);
@@ -374,6 +424,7 @@ export default function StudentsPage() {
     setShowLastNameSuggestions(false);
     setSchoolSuggestions([]);
     setShowSchoolSuggestions(false);
+    setCoursesDropdownOpen(false);
   };
 
   const handleCreate = () => {
@@ -409,22 +460,23 @@ export default function StudentsPage() {
     setFormData({
       first_name: firstName,
       last_name: lastName,
-      birth_date: '',
-      school: '',
-      discount: '',
-      photo: null,
+      birth_date: student.birth_date || '',
+      school: student.school || '',
+      discount: student.discount || '',
+      photo: student.photo,
       photoFile: null,
       phone: phoneDigits,
       parent_name: student.parent_name || '',
-      parent_relation: '',
+      parent_relation: student.parent_relation || '',
       parent_relation_other: '',
       parent_phone: parentPhoneDigits,
-      parent2_name: '',
-      parent2_relation: '',
+      parent2_name: student.parent2_name || '',
+      parent2_relation: student.parent2_relation || '',
       parent2_relation_other: '',
-      notes: '',
-      interested_courses: '',
-      source: '',
+      notes: student.notes || '',
+      interested_courses: student.interested_courses ? student.interested_courses.split(',').map(s => s.trim()).filter(Boolean) : [],
+      source: student.source || '',
+      source_other: '',
     });
     setShowModal(true);
     // Load courses and schools for autocomplete
@@ -477,30 +529,42 @@ export default function StudentsPage() {
         parent_relation: formData.parent_relation === 'other' ? formData.parent_relation_other : formData.parent_relation,
         parent2_name: formData.parent2_name,
         parent2_relation: formData.parent2_relation === 'other' ? formData.parent2_relation_other : formData.parent2_relation,
-        interested_courses: formData.interested_courses,
-        source: formData.source,
+        interested_courses: formData.interested_courses.join(', '),
+        source: formData.source === 'other' ? formData.source_other : formData.source,
+        photo: formData.photo,
       };
       
+      let res;
       if (editingStudent) {
-        await fetch(`/api/students/${editingStudent.id}`, {
+        res = await fetch(`/api/students/${editingStudent.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(apiData),
         });
       } else {
-        await fetch('/api/students', {
+        res = await fetch('/api/students', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(apiData),
         });
       }
       
+      // Check if the request was successful
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to save student:', res.status, errorData);
+        alert(`Помилка збереження: ${errorData.error || res.statusText}`);
+        setSaving(false);
+        return;
+      }
+      
       setShowModal(false);
-      const res = await fetch('/api/students?withGroupCount=true');
-      const data = await res.json();
+      const studentsRes = await fetch('/api/students?withGroupCount=true');
+      const data = await studentsRes.json();
       setStudents(data.students || []);
     } catch (error) {
       console.error('Failed to save student:', error);
+      alert('Помилка мережі. Спробуйте ще раз.');
     } finally {
       setSaving(false);
     }
@@ -537,7 +601,7 @@ export default function StudentsPage() {
     }
   };
 
-  // Close suggestions when clicking outside
+  // Close dropdowns when clicking outside or modal closes
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -546,10 +610,37 @@ export default function StudentsPage() {
         setShowLastNameSuggestions(false);
         setShowSchoolSuggestions(false);
       }
+      // Close courses dropdown when clicking outside
+      if (!target.closest('.courses-dropdown')) {
+        setCoursesDropdownOpen(false);
+      }
     };
     
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Close courses dropdown when modal closes
+  useEffect(() => {
+    if (!showModal) {
+      setCoursesDropdownOpen(false);
+    }
+  }, [showModal]);
+
+  // Handle click outside to close student dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        !(dropdownButtonRef.current && dropdownButtonRef.current.contains(target)) &&
+        !(dropdownMenuRef.current && dropdownMenuRef.current.contains(target))
+      ) {
+        setOpenDropdownId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   if (loading) {
@@ -579,55 +670,327 @@ export default function StudentsPage() {
           )}
         </div>
 
-        <div className="table-container">
+        <div style={{ padding: '0.5rem' }}>
           {students.length > 0 ? (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t('table.id')}</th>
-                  <th>{t('forms.fullName')}</th>
-                  <th>{t('table.phone')}</th>
-                  <th>{t('table.parent')}</th>
-                  <th>{t('table.parentPhone')}</th>
-                  <th style={{ textAlign: 'center' }}>{t('table.groups')}</th>
-                  <th>{t('common.status')}</th>
-                  {user.role === 'admin' && <th style={{ textAlign: 'right' }}>{t('common.actions')}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((student) => (
-                  <tr key={student.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.875rem', color: '#6b7280' }}>
-                      {student.public_id}
-                    </td>
-                    <td>
-                      <a href={`/students/${student.id}`} style={{ fontWeight: '500' }}>
-                        {student.full_name}
-                      </a>
-                    </td>
-                    <td>{student.phone || '---'}</td>
-                    <td>{student.parent_name || '---'}</td>
-                    <td>{student.parent_phone || '---'}</td>
-                    <td style={{ textAlign: 'center' }}>{student.groups_count}</td>
-                    <td>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gap: '1rem',
+            }}>
+              {students.map((student) => {
+                const age = calculateAge(student.birth_date);
+                const firstLetter = getFirstLetter(student.full_name);
+                
+                return (
+                  <div
+                    key={student.id}
+                    style={{
+                      backgroundColor: 'white',
+                      borderRadius: '0.75rem',
+                      border: '1px solid #e5e7eb',
+                      padding: '1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                    }}
+                  >
+                    {/* Header: Avatar, Name, Age */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.875rem' }}>
+                      {/* Round Avatar */}
+                      <div
+                        style={{
+                          width: '56px',
+                          height: '56px',
+                          borderRadius: '50%',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          backgroundColor: student.photo ? 'transparent' : '#e0e7ff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '2px solid #e0e7ff',
+                        }}
+                      >
+                        {student.photo ? (
+                          <img
+                            src={student.photo.startsWith('data:') ? student.photo : student.photo}
+                            alt={student.full_name}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                            }}
+                          />
+                        ) : (
+                          <span style={{
+                            fontSize: '1.25rem',
+                            fontWeight: 600,
+                            color: '#4f46e5',
+                          }}>
+                            {firstLetter}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Name and Age */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          <a
+                            href={`/students/${student.id}`}
+                            style={{
+                              fontWeight: 600,
+                              fontSize: '1rem',
+                              color: '#111827',
+                              textDecoration: 'none',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {student.full_name}
+                          </a>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#6b7280', backgroundColor: '#f3f4f6', padding: '0.125rem 0.375rem', borderRadius: '0.25rem' }}>
+                            {student.public_id}
+                          </span>
+                          {age !== null && (
+                            <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                              {age} {age === 1 ? 'рік' : age >= 2 && age <= 4 ? 'роки' : 'років'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Three dots menu */}
+                      {user.role === 'admin' && (
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            ref={openDropdownId === student.id ? dropdownButtonRef : undefined}
+                            className="btn btn-secondary btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenDropdownId(openDropdownId === student.id ? null : student.id);
+                            }}
+                            style={{
+                              padding: '0.5rem',
+                              borderRadius: '0.5rem',
+                              backgroundColor: openDropdownId === student.id ? '#f3f4f6' : 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s',
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                              <circle cx="12" cy="5" r="2" />
+                              <circle cx="12" cy="12" r="2" />
+                              <circle cx="12" cy="19" r="2" />
+                            </svg>
+                          </button>
+                          {openDropdownId === student.id && (
+                            <Portal anchorRef={dropdownButtonRef} menuRef={dropdownMenuRef} offsetY={6}>
+                              <div
+                                style={{
+                                  backgroundColor: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '0.75rem',
+                                  boxShadow: '0 10px 40px -10px rgba(0,0,0,0.15), 0 0 2px rgba(0,0,0,0.1)',
+                                  minWidth: '180px',
+                                  padding: '0.5rem',
+                                  zIndex: 50,
+                                  overflow: 'hidden',
+                                  animation: 'dropdownFadeIn 0.15s ease-out',
+                                }}
+                              >
+                                <style>{`
+                                  @keyframes dropdownFadeIn {
+                                    from { opacity: 0; transform: translateY(-8px); }
+                                    to { opacity: 1; transform: translateY(0); }
+                                  }
+                                `}</style>
+                                <a
+                                  href={`/students/${student.id}`}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.625rem 0.75rem',
+                                    color: '#374151',
+                                    textDecoration: 'none',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    borderRadius: '0.5rem',
+                                    transition: 'all 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = '#1f2937'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#374151'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#6b7280' }}>
+                                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                                  </svg>
+                                  Переглянути
+                                </a>
+                                <button
+                                  className="btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenDropdownId(null);
+                                    handleEdit(student);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    width: '100%',
+                                    padding: '0.625rem 0.75rem',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderRadius: '0.5rem',
+                                    color: '#374151',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                    textAlign: 'left',
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f3f4f6'; e.currentTarget.style.color = '#1f2937'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#374151'; }}
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#6b7280' }}>
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                  </svg>
+                                  Редагувати
+                                </button>
+                              </div>
+                            </Portal>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Contact Info */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {/* Main Contact (phone) */}
+                      {student.phone && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                          </svg>
+                          <span
+                            onClick={() => copyPhone(student.phone, 'main')}
+                            style={{
+                              fontSize: '0.875rem',
+                              color: '#374151',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.375rem',
+                              transition: 'color 0.15s',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = '#4f46e5'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = '#374151'; }}
+                          >
+                            {student.phone}
+                            {copiedPhone === `main-${student.phone}` ? (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* Parent Contact */}
+                      {student.parent_phone && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                              <circle cx="12" cy="7" r="4" />
+                            </svg>
+                            <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                              {student.parent_name || 'Батьки'}
+                            </span>
+                          </div>
+                          <span
+                            onClick={() => copyPhone(student.parent_phone, 'parent')}
+                            style={{
+                              fontSize: '0.875rem',
+                              color: '#374151',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.375rem',
+                              marginLeft: '1.375rem',
+                              transition: 'color 0.15s',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = '#4f46e5'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = '#374151'; }}
+                          >
+                            {student.parent_phone}
+                            {copiedPhone === `parent-${student.parent_phone}` ? (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Note */}
+                    {student.notes && (
+                      <div style={{
+                        padding: '0.5rem 0.625rem',
+                        backgroundColor: '#fefce8',
+                        borderRadius: '0.375rem',
+                        border: '1px solid #fef08a',
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.375rem', wordBreak: 'break-word' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a16207" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '0.125rem' }}>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                            <polyline points="10 9 9 9 8 9" />
+                          </svg>
+                          <span style={{ fontSize: '0.8125rem', color: '#a16207', lineHeight: 1.4, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                            {student.notes}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Status Badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <span className={`badge ${student.is_active ? 'badge-success' : 'badge-gray'}`}>
                         {student.is_active ? t('status.active') : t('status.archived')}
                       </span>
-                    </td>
-                    {user.role === 'admin' && (
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => handleEdit(student)}
-                        >
-                          {t('actions.edit')}
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {student.groups_count > 0 && (
+                        <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                          {student.groups_count} {student.groups_count === 1 ? 'група' : student.groups_count >= 2 && student.groups_count <= 4 ? 'групи' : 'груп'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="empty-state">
               <div className="empty-state-icon">
@@ -915,16 +1278,38 @@ export default function StudentsPage() {
 
                 <div className="form-group">
                   <label className="form-label">{t('forms.mainPhone')} *</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '1rem', color: '#374151', fontWeight: '500', minWidth: '45px' }}>+380</span>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    border: errors.phone ? '1px solid #ef4444' : '1px solid #d1d5db',
+                    borderRadius: '0.375rem',
+                    backgroundColor: '#fff',
+                    overflow: 'hidden',
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease'
+                  }}>
+                    <span style={{ 
+                      padding: '0.625rem 0.75rem', 
+                      backgroundColor: '#f3f4f6', 
+                      color: '#374151', 
+                      fontWeight: '500',
+                      fontSize: '0.875rem',
+                      borderRight: '1px solid #d1d5db'
+                    }}>+380</span>
                     <input
                       type="tel"
-                      className={`form-input ${errors.phone ? 'form-input-error' : ''}`}
+                      className={errors.phone ? 'form-input-error' : ''}
                       value={formData.phone}
                       onChange={(e) => handlePhoneChange('phone', e.target.value)}
-                      placeholder="XXXXXXXXX"
+                      placeholder="00 000 00 00"
                       maxLength={9}
-                      style={{ flex: 1 }}
+                      style={{ 
+                        flex: 1, 
+                        border: 'none',
+                        outline: 'none',
+                        padding: '0.625rem 0.75rem',
+                        fontSize: '1rem',
+                        letterSpacing: '0.05em'
+                      }}
                     />
                   </div>
                   {errors.phone && <span className="form-error">{errors.phone}</span>}
@@ -977,16 +1362,38 @@ export default function StudentsPage() {
 
                 <div className="form-group">
                   <label className="form-label">{t('forms.additionalPhone')}</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '1rem', color: '#374151', fontWeight: '500', minWidth: '45px' }}>+380</span>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.375rem',
+                    backgroundColor: '#fff',
+                    overflow: 'hidden',
+                    transition: 'border-color 0.15s ease, box-shadow 0.15s ease'
+                  }}>
+                    <span style={{ 
+                      padding: '0.625rem 0.75rem', 
+                      backgroundColor: '#f3f4f6', 
+                      color: '#374151', 
+                      fontWeight: '500',
+                      fontSize: '0.875rem',
+                      borderRight: '1px solid #d1d5db'
+                    }}>+380</span>
                     <input
                       type="tel"
                       className="form-input"
                       value={formData.parent_phone}
                       onChange={(e) => handlePhoneChange('parent_phone', e.target.value)}
-                      placeholder="XXXXXXXXX"
+                      placeholder="00 000 00 00"
                       maxLength={9}
-                      style={{ flex: 1 }}
+                      style={{ 
+                        flex: 1, 
+                        border: 'none',
+                        outline: 'none',
+                        padding: '0.625rem 0.75rem',
+                        fontSize: '1rem',
+                        letterSpacing: '0.05em'
+                      }}
                     />
                   </div>
                 </div>
@@ -1055,18 +1462,98 @@ export default function StudentsPage() {
                   />
                 </div>
 
-                <div className="form-group">
+                <div className="form-group courses-dropdown" style={{ position: 'relative' }}>
                   <label className="form-label">{t('forms.interestedCourses')}</label>
-                  <select
-                    className="form-input"
-                    value={formData.interested_courses}
-                    onChange={(e) => setFormData({ ...formData, interested_courses: e.target.value })}
+                  <div
+                    onClick={() => setCoursesDropdownOpen(!coursesDropdownOpen)}
+                    style={{
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      padding: '0.625rem 0.75rem',
+                      backgroundColor: '#fff',
+                      cursor: 'pointer',
+                      minHeight: '42px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
                   >
-                    <option value="">{t('forms.interestedCoursesPlaceholder')}</option>
-                    {courses.map(course => (
-                      <option key={course.id} value={course.title}>{course.title}</option>
-                    ))}
-                  </select>
+                    <span style={{ color: formData.interested_courses.length > 0 ? '#111827' : '#9ca3af', fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                      {formData.interested_courses.length > 0 
+                        ? formData.interested_courses.join(', ') 
+                        : t('forms.interestedCoursesPlaceholder')}
+                    </span>
+                    <svg 
+                      width="16" 
+                      height="16" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2"
+                      style={{ transform: coursesDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+                    >
+                      <path d="M6 9l6 6 6-6"/>
+                    </svg>
+                  </div>
+                  
+                  {coursesDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      backgroundColor: '#fff',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      zIndex: 1000,
+                      marginTop: '0.25rem',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}>
+                      {courses.map(course => (
+                        <label
+                          key={course.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.625rem 0.75rem',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #f3f4f6',
+                            transition: 'background-color 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formData.interested_courses.includes(course.title)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormData({ 
+                                  ...formData, 
+                                  interested_courses: [...formData.interested_courses, course.title] 
+                                });
+                              } else {
+                                setFormData({ 
+                                  ...formData, 
+                                  interested_courses: formData.interested_courses.filter(c => c !== course.title) 
+                                });
+                              }
+                            }}
+                            style={{ width: '16px', height: '16px', accentColor: '#3b82f6' }}
+                          />
+                          <span style={{ fontSize: '0.875rem' }}>{course.title}</span>
+                        </label>
+                      ))}
+                      {courses.length === 0 && (
+                        <div style={{ padding: '0.75rem', color: '#9ca3af', fontSize: '0.875rem' }}>
+                          {t('forms.interestedCoursesPlaceholder')}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -1082,6 +1569,18 @@ export default function StudentsPage() {
                     ))}
                   </select>
                 </div>
+
+                {formData.source === 'other' && (
+                  <div className="form-group">
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={formData.source_other}
+                      onChange={(e) => setFormData({ ...formData, source_other: e.target.value })}
+                      placeholder={t('forms.sourceOtherPlaceholder')}
+                    />
+                  </div>
+                )}
               </div>
             </div>
             <div className="modal-footer" style={{ padding: '1rem 1.25rem' }}>

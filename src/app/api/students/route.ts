@@ -79,7 +79,8 @@ export async function POST(request: NextRequest) {
       parent2_name,
       parent2_relation,
       interested_courses,
-      source
+      source,
+      photo
     } = body;
     
     if (!full_name || full_name.trim().length === 0) {
@@ -89,12 +90,24 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // Serialize interested_courses array to JSON string
+    const interestedCoursesJson = interested_courses ? JSON.stringify(interested_courses) : undefined;
+    
     const result = createStudent(
       full_name.trim(),
       phone?.trim(),
       parent_name?.trim(),
       parent_phone?.trim(),
-      notes?.trim()
+      notes?.trim(),
+      birth_date,
+      photo || undefined,
+      school?.trim(),
+      discount?.trim(),
+      parent_relation?.trim(),
+      parent2_name?.trim(),
+      parent2_relation?.trim(),
+      interestedCoursesJson,
+      source?.trim()
     );
     
     return NextResponse.json({

@@ -158,9 +158,9 @@ export const uk = {
     // Contact info
     mainPhone: 'Основний контакт',
     additionalPhone: 'Додатковий контакт',
-    contactName: 'П.І.Б. контактної особи',
-    contactNamePlaceholder: "Повне ім'я контактної особи",
-    whoIsThis: 'Ступінь спорідненості',
+    contactName: "Ім'я контактної особи",
+    contactNamePlaceholder: "Ім'я контактної особи",
+    whoIsThis: 'Хто це',
     whoIsThisPlaceholder: 'Оберіть',
     relationMother: 'Мама',
     relationFather: 'Тато',
@@ -171,15 +171,15 @@ export const uk = {
     
     // Additional info
     additionalInfo: 'Додаткова інформація',
-    interestedCourses: 'Цікаві курси',
-    interestedCoursesPlaceholder: 'Оберіть курс',
+    interestedCourses: 'Курси, які зацікавили',
+    interestedCoursesPlaceholder: 'Оберіть курси',
     source: 'Звідки дізналися про нас',
     sourcePlaceholder: 'Оберіть',
+    sourceOtherPlaceholder: 'Вкажіть інший варіант',
     
     // Source options
     sourceSocial: 'Соціальні мережі',
     sourceFriends: 'Знайомі/Рекомендації',
-    sourceFlyers: 'Флаєри',
     sourceSearch: 'Пошук в інтернеті',
     sourceOther: 'Інше',
 

@@ -42,12 +42,14 @@ interface Student {
   parent_phone: string | null;
   join_date: string;
   student_group_id: number;
+  photo: string | null;
 }
 
 interface StudentSearch {
   id: number;
   full_name: string;
   phone: string | null;
+  photo: string | null;
 }
 
 interface Lesson {
@@ -485,7 +487,7 @@ export default function GroupDetailsPage() {
                         width: '36px', 
                         height: '36px', 
                         borderRadius: '50%', 
-                        background: 'var(--gray-100)', 
+                        background: student.photo ? 'transparent' : 'var(--gray-100)', 
                         color: 'var(--gray-600)',
                         display: 'flex',
                         alignItems: 'center',
@@ -494,8 +496,17 @@ export default function GroupDetailsPage() {
                         fontWeight: '600',
                         marginRight: '0.875rem',
                         flexShrink: 0,
+                        overflow: 'hidden',
                       }}>
-                        {student.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        {student.photo ? (
+                          <img 
+                            src={student.photo} 
+                            alt={student.full_name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          student.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)
+                        )}
                       </div>
                       <div style={{ flex: 1 }}>
                         <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: '500', color: 'var(--gray-900)' }}>{student.full_name}</p>
@@ -805,7 +816,6 @@ export default function GroupDetailsPage() {
                       key={student.id}
                       style={{
                         display: 'flex',
-                        justifyContent: 'space-between',
                         alignItems: 'center',
                         padding: '0.75rem',
                         borderBottom: '1px solid var(--gray-100)',
@@ -815,7 +825,32 @@ export default function GroupDetailsPage() {
                       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--gray-50)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
-                      <div>
+                      <div style={{ 
+                        width: '36px', 
+                        height: '36px', 
+                        borderRadius: '50%', 
+                        background: student.photo ? 'transparent' : 'var(--gray-100)', 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        marginRight: '0.75rem',
+                        flexShrink: 0,
+                        overflow: 'hidden',
+                        color: 'var(--gray-600)',
+                      }}>
+                        {student.photo ? (
+                          <img 
+                            src={student.photo} 
+                            alt={student.full_name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          student.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)
+                        )}
+                      </div>
+                      <div style={{ flex: 1 }}>
                         <p style={{ margin: 0, fontWeight: '500' }}>{student.full_name}</p>
                         {student.phone && (
                           <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8125rem', color: 'var(--gray-500)' }}>{student.phone}</p>
