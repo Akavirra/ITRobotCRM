@@ -111,14 +111,13 @@ export function restoreCourse(id: number): void {
   run(`UPDATE courses SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
 }
 
-// Delete course permanently (only if no groups)
+// Delete course permanently (with cascade delete of groups)
 export function deleteCourse(id: number): boolean {
-  const groups = all<{ id: number }>(`SELECT id FROM groups WHERE course_id = ?`, [id]);
+  // First delete all groups for this course
+  // This will cascade delete student_groups, lessons, payments, and pricing due to FK constraints
+  run(`DELETE FROM groups WHERE course_id = ?`, [id]);
   
-  if (groups.length > 0) {
-    return false;
-  }
-  
+  // Now delete the course
   run(`DELETE FROM courses WHERE id = ?`, [id]);
   return true;
 }

@@ -15,7 +15,6 @@ const ERROR_MESSAGES = {
   durationRequired: "Тривалість обов'язкова",
   durationInvalid: 'Тривалість повинна бути цілим числом від 1 до 36 місяців',
   updateFailed: 'Не вдалося оновити курс',
-  cannotDeleteWithGroups: 'Неможливо видалити курс: є пов\'язані групи/дані.',
   deleteFailed: 'Не вдалося видалити курс',
   passwordRequired: 'Пароль обов\'язковий для підтвердження видалення',
   invalidPassword: 'Неправильний пароль',
@@ -227,8 +226,8 @@ export async function DELETE(
     
     if (!deleted) {
       return NextResponse.json(
-        { error: ERROR_MESSAGES.cannotDeleteWithGroups },
-        { status: 409 }
+        { error: ERROR_MESSAGES.deleteFailed },
+        { status: 500 }
       );
     }
     

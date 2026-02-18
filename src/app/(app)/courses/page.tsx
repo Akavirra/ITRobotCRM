@@ -27,6 +27,14 @@ interface Course {
   students_count?: number;
 }
 
+interface CourseGroup {
+  id: number;
+  public_id: string | null;
+  title: string;
+  status: string;
+  teacher_name: string | null;
+}
+
 export default function CoursesPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -54,6 +62,8 @@ export default function CoursesPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [courseGroupsForDelete, setCourseGroupsForDelete] = useState<CourseGroup[]>([]);
+  const [loadingGroupsForDelete, setLoadingGroupsForDelete] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -268,11 +278,28 @@ export default function CoursesPage() {
     }
   };
 
-  const handleDeleteClick = (course: Course) => {
+  const handleDeleteClick = async (course: Course) => {
     setCourseToDelete(course);
     setDeletePassword('');
     setDeleteError('');
     setShowDeleteModal(true);
+    
+    // Fetch groups for this course to show in warning
+    setLoadingGroupsForDelete(true);
+    try {
+      const groupsRes = await fetch(`/api/courses/${course.id}/groups`);
+      if (groupsRes.ok) {
+        const groupsData = await groupsRes.json();
+        setCourseGroupsForDelete(groupsData.groups || []);
+      } else {
+        setCourseGroupsForDelete([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch groups for delete warning:', error);
+      setCourseGroupsForDelete([]);
+    } finally {
+      setLoadingGroupsForDelete(false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -322,6 +349,7 @@ export default function CoursesPage() {
     setCourseToDelete(null);
     setDeletePassword('');
     setDeleteError('');
+    setCourseGroupsForDelete([]);
   };
 
   const handleFlyerUpload = async () => {
@@ -964,18 +992,91 @@ export default function CoursesPage() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && courseToDelete && (
         <div className="modal-overlay" onClick={handleDeleteCancel}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h3 className="modal-title">Підтвердження видалення</h3>
               <button className="modal-close" onClick={handleDeleteCancel} disabled={deleting}>×</button>
             </div>
             <div className="modal-body">
               <p style={{ margin: '0 0 1rem 0' }}>
-                Щоб видалити курс, введіть пароль адміністратора.
+                Ви збираєтеся остаточно видалити курс <strong>{courseToDelete.title}</strong>.
               </p>
-              <p style={{ margin: '0 0 1rem 0', fontWeight: 500 }}>
-                Курс: {courseToDelete.title}
+              
+              {/* Warning about groups */}
+              {loadingGroupsForDelete ? (
+                <div style={{ 
+                  backgroundColor: '#f3f4f6', 
+                  borderRadius: '0.5rem', 
+                  padding: '1rem', 
+                  marginBottom: '1rem',
+                  textAlign: 'center',
+                  color: '#6b7280'
+                }}>
+                  Завантаження інформації про групи...
+                </div>
+              ) : courseGroupsForDelete.length > 0 ? (
+                <div style={{
+                  backgroundColor: '#fef3c7',
+                  border: '1px solid #f59e0b',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#92400e', fontWeight: 600 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    Курс має навчальні групи
+                  </div>
+                  <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#92400e' }}>
+                    При видаленні курсу будуть також видалені наступні групи ({courseGroupsForDelete.length}):
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: '#92400e' }}>
+                    {courseGroupsForDelete.slice(0, 5).map(group => (
+                      <li key={group.id}>
+                        <strong>{group.title}</strong>
+                        {group.teacher_name && <span> - {group.teacher_name}</span>}
+                        <span className={`badge badge-${group.status === 'active' ? 'success' : group.status === 'graduate' ? 'info' : 'gray'}`} style={{ marginLeft: '0.5rem', fontSize: '0.75rem' }}>
+                          {group.status === 'active' ? 'Активна' : group.status === 'graduate' ? 'Випущена' : 'Неактивна'}
+                        </span>
+                      </li>
+                    ))}
+                    {courseGroupsForDelete.length > 5 && (
+                      <li style={{ fontStyle: 'italic' }}>... та ще {courseGroupsForDelete.length - 5} група(и)</li>
+                    )}
+                  </ul>
+                </div>
+              ) : (
+                <div style={{
+                  backgroundColor: '#d1fae5',
+                  border: '1px solid #10b981',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#065f46', fontWeight: 600 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                    Курс не має груп
+                  </div>
+                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#065f46' }}>
+                    Курс можна безпечно видалити.
+                  </p>
+                </div>
+              )}
+              
+              <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.875rem' }}>
+                Ця дія незворотня. Всі дані про курс, включаючи групи та зв'язки з учнями, будуть видалені.
               </p>
+              
+              <p style={{ margin: '0 0 1rem 0' }}>
+                Щоб підтвердити видалення, введіть пароль адміністратора.
+              </p>
+              
               <div className="form-group">
                 <label className="form-label">Пароль</label>
                 <input
@@ -988,6 +1089,7 @@ export default function CoursesPage() {
                   autoFocus
                 />
               </div>
+              
               {deleteError && (
                 <div style={{ 
                   color: '#dc2626', 
@@ -1009,7 +1111,7 @@ export default function CoursesPage() {
                 onClick={handleDeleteConfirm} 
                 disabled={deleting || !deletePassword.trim()}
               >
-                {deleting ? 'Видалення...' : 'Видалити'}
+                {deleting ? 'Видалення...' : 'Видалити остаточно'}
               </button>
             </div>
           </div>
