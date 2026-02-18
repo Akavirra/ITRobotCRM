@@ -70,6 +70,12 @@ export default function GroupsPage() {
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [groupDeletionWarning, setGroupDeletionWarning] = useState<{
+    canDelete: boolean;
+    students: { id: number; full_name: string }[];
+    lessons: { id: number; date: string }[];
+    payments: { id: number; amount: number; date: string }[];
+  } | null>(null);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -411,12 +417,23 @@ export default function GroupsPage() {
     }
   };
 
-  const handleDeleteClick = (group: Group) => {
+  const handleDeleteClick = async (group: Group) => {
     setGroupToDelete(group);
     setDeletePassword('');
     setDeleteError('');
-    setShowDeleteModal(true);
+    setGroupDeletionWarning(null);
     setOpenDropdownId(null);
+    setShowDeleteModal(true);
+    
+    // Check if group can be deleted
+    try {
+      const res = await fetch(`/api/groups/${group.id}?checkDelete=true`);
+      const data = await res.json();
+      setGroupDeletionWarning(data);
+    } catch (error) {
+      console.error('Failed to check group deletion status:', error);
+      setGroupDeletionWarning({ canDelete: false, students: [], lessons: [], payments: [] });
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -465,6 +482,7 @@ export default function GroupsPage() {
     setGroupToDelete(null);
     setDeletePassword('');
     setDeleteError('');
+    setGroupDeletionWarning(null);
   };
 
   // Edit group handlers
@@ -974,53 +992,166 @@ export default function GroupsPage() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && groupToDelete && (
         <div className="modal-overlay" onClick={handleDeleteCancel}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h3 className="modal-title">Підтвердження видалення</h3>
               <button className="modal-close" onClick={handleDeleteCancel} disabled={deleting}>×</button>
             </div>
             <div className="modal-body">
               <p style={{ margin: '0 0 1rem 0' }}>
-                Щоб видалити групу, введіть пароль адміністратора.
+                Ви збираєтеся остаточно видалити групу <strong>{groupToDelete.title}</strong>.
               </p>
-              <p style={{ margin: '0 0 1rem 0', fontWeight: 500 }}>
-                Група: {groupToDelete.title}
+              
+              {/* Loading state */}
+              {groupDeletionWarning === null && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                  Перевірка можливості видалення...
+                </div>
+              )}
+              
+              {/* Warning about students, lessons, and payments */}
+              {groupDeletionWarning && !groupDeletionWarning.canDelete && (
+                <div style={{
+                  backgroundColor: '#fef3c7',
+                  border: '1px solid #f59e0b',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#92400e', fontWeight: 600 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    Група містить дані
+                  </div>
+                  <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#92400e' }}>
+                    Неможливо видалити групу, оскільки вона містить:
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: '#92400e' }}>
+                    {groupDeletionWarning.students.length > 0 && (
+                      <li>
+                        <strong>{groupDeletionWarning.students.length}</strong> {groupDeletionWarning.students.length === 1 ? 'учень' : groupDeletionWarning.students.length < 5 ? 'учні' : 'учнів'}:
+                        <ul style={{ marginTop: '0.25rem' }}>
+                          {groupDeletionWarning.students.slice(0, 5).map(s => (
+                            <li key={s.id}>{s.full_name}</li>
+                          ))}
+                          {groupDeletionWarning.students.length > 5 && (
+                            <li>...та ще {groupDeletionWarning.students.length - 5}</li>
+                          )}
+                        </ul>
+                      </li>
+                    )}
+                    {groupDeletionWarning.lessons.length > 0 && (
+                      <li>
+                        <strong>{groupDeletionWarning.lessons.length}</strong> {groupDeletionWarning.lessons.length === 1 ? 'заняття' : groupDeletionWarning.lessons.length < 5 ? 'заняття' : 'занять'}
+                      </li>
+                    )}
+                    {groupDeletionWarning.payments.length > 0 && (
+                      <li>
+                        <strong>{groupDeletionWarning.payments.length}</strong> {groupDeletionWarning.payments.length === 1 ? 'платіж' : groupDeletionWarning.payments.length < 5 ? 'платежі' : 'платежів'}
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
+              
+              {/* Safe to delete message */}
+              {groupDeletionWarning && groupDeletionWarning.canDelete && (
+                <div style={{
+                  backgroundColor: '#ecfdf5',
+                  border: '1px solid #10b981',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#065f46', fontWeight: 600 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                    Групу можна видалити
+                  </div>
+                  <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#065f46' }}>
+                    Група порожня і не містить жодних даних.
+                  </p>
+                </div>
+              )}
+              
+              <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.875rem' }}>
+                Ця дія незворотня. Всі дані про групу будуть видалені.
               </p>
-              <div className="form-group">
-                <label className="form-label">Пароль</label>
-                <input
-                  type="password"
-                  className="form-input"
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="Введіть пароль"
-                  disabled={deleting}
-                  autoFocus
-                />
-              </div>
+              
+              <p style={{ margin: '0 0 1rem 0' }}>
+                Щоб підтвердити видалення, введіть пароль адміністратора.
+              </p>
+              
+              {/* Only show password input if group can be deleted */}
+              {groupDeletionWarning && groupDeletionWarning.canDelete && (
+                <div className="form-group">
+                  <label className="form-label">Пароль</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    value={deletePassword}
+                    onChange={(e) => setDeletePassword(e.target.value)}
+                    placeholder="Введіть пароль"
+                    disabled={deleting}
+                    autoFocus
+                  />
+                </div>
+              )}
+              
+              {/* Show message if cannot delete */}
+              {groupDeletionWarning && !groupDeletionWarning.canDelete && (
+                <div style={{
+                  color: '#dc2626',
+                  backgroundColor: '#fef2f2',
+                  padding: '0.75rem',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem'
+                }}>
+                  Спочатку виберіть дію «Архівувати» замість видалення, щоб зберегти історію групи.
+                </div>
+              )}
+              
               {deleteError && (
                 <div style={{ 
                   color: '#dc2626', 
                   backgroundColor: '#fef2f2', 
                   padding: '0.75rem', 
                   borderRadius: '0.375rem',
-                  fontSize: '0.875rem'
+                  fontSize: '0.875rem',
+                  marginTop: '1rem'
                 }}>
                   {deleteError}
                 </div>
               )}
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={handleDeleteCancel} disabled={deleting}>
-                Скасувати
-              </button>
-              <button 
-                className="btn btn-danger" 
-                onClick={handleDeleteConfirm} 
-                disabled={deleting || !deletePassword.trim()}
-              >
-                {deleting ? 'Видалення...' : 'Видалити'}
-              </button>
+              {groupDeletionWarning === null ? (
+                <button className="btn btn-secondary" onClick={handleDeleteCancel} disabled={deleting}>
+                  Скасувати
+                </button>
+              ) : groupDeletionWarning.canDelete ? (
+                <>
+                  <button className="btn btn-secondary" onClick={handleDeleteCancel} disabled={deleting}>
+                    Скасувати
+                  </button>
+                  <button 
+                    className="btn btn-danger" 
+                    onClick={handleDeleteConfirm} 
+                    disabled={deleting || !deletePassword.trim()}
+                  >
+                    {deleting ? 'Видалення...' : 'Видалити'}
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn-secondary" onClick={handleDeleteCancel}>
+                  Закрити
+                </button>
+              )}
             </div>
           </div>
         </div>

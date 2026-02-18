@@ -391,6 +391,43 @@ export function deleteGroup(id: number): { success: boolean; error?: string } {
   return { success: true };
 }
 
+// Check if group can be deleted and get details about what prevents deletion
+export interface GroupDeletionCheck {
+  canDelete: boolean;
+  students: { id: number; full_name: string }[];
+  lessons: { id: number; date: string }[];
+  payments: { id: number; amount: number; date: string }[];
+}
+
+export function checkGroupDeletion(id: number): GroupDeletionCheck {
+  // Get students in group
+  const students = all<{ id: number; full_name: string }>(
+    `SELECT s.id, s.full_name FROM students s 
+     JOIN student_groups sg ON s.id = sg.student_id 
+     WHERE sg.group_id = ? AND sg.is_active = 1`,
+    [id]
+  );
+  
+  // Get lessons in group
+  const lessons = all<{ id: number; date: string }>(
+    `SELECT id, date FROM lessons WHERE group_id = ?`,
+    [id]
+  );
+  
+  // Get payments in group
+  const payments = all<{ id: number; amount: number; date: string }>(
+    `SELECT id, amount, date FROM payments WHERE group_id = ?`,
+    [id]
+  );
+  
+  return {
+    canDelete: students.length === 0 && lessons.length === 0 && payments.length === 0,
+    students,
+    lessons,
+    payments,
+  };
+}
+
 // Get students in group
 export function getStudentsInGroup(groupId: number): Array<{
   id: number;

@@ -9,6 +9,7 @@ import {
   restoreGroup, 
   getStudentsInGroup,
   deleteGroup,
+  checkGroupDeletion,
   validateTime,
   validateUrl,
   generateGroupTitle,
@@ -32,7 +33,7 @@ const ERROR_MESSAGES = {
   invalidDay: 'День тижня має бути від 1 до 7',
 };
 
-// GET /api/groups/[id] - Get group by ID
+// GET /api/groups/[id] - Get group by ID or check deletion status
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -58,6 +59,22 @@ export async function GET(
   
   const { searchParams } = new URL(request.url);
   const withStudents = searchParams.get('withStudents') === 'true';
+  const checkDelete = searchParams.get('checkDelete') === 'true';
+  
+  // If checking deletion status, admin only
+  if (checkDelete) {
+    if (!isAdmin(user)) {
+      return forbidden();
+    }
+    
+    const group = getGroupById(groupId);
+    if (!group) {
+      return notFound(ERROR_MESSAGES.groupNotFound);
+    }
+    
+    const deletionCheck = checkGroupDeletion(groupId);
+    return NextResponse.json(deletionCheck);
+  }
   
   const group = getGroupWithDetailsById(groupId);
   
