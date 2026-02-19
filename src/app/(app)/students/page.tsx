@@ -4,7 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Portal from '@/components/Portal';
+import DraggableModal from '@/components/DraggableModal';
 import { t } from '@/i18n/t';
+import { formatDateKyiv } from '@/lib/date-utils';
 
 interface User {
   id: number;
@@ -18,6 +20,35 @@ interface StudentGroup {
   public_id: string;
   title: string;
   course_title: string;
+}
+
+interface GroupDetails {
+  group?: {
+    id: number;
+    public_id: string | null;
+    title: string;
+    status: string;
+    is_active: number;
+    weekly_day: number;
+    start_time: string;
+    end_time: string | null;
+    course_title?: string;
+    course_id?: number;
+    room?: string;
+    notes?: string;
+    students_count?: number;
+  };
+  students?: Array<{
+    id: number;
+    public_id: string;
+    full_name: string;
+    phone: string | null;
+    parent_name: string | null;
+    parent_phone: string | null;
+    join_date: string;
+    student_group_id: number;
+    photo: string | null;
+  }>;
 }
 
 interface Student {
@@ -164,6 +195,17 @@ function getFirstLetter(name: string): string {
   return name.trim().charAt(0).toUpperCase();
 }
 
+function getDayName(day: number): string {
+  const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+  return days[day - 1] || '';
+}
+
+function formatTime(time: string): string {
+  if (!time) return '';
+  const [hours, minutes] = time.split(':');
+  return `${hours}:${minutes}`;
+}
+
 export default function StudentsPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -199,7 +241,7 @@ export default function StudentsPage() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
-  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
   const dropdownMenuRef = useRef<HTMLDivElement | null>(null);
@@ -207,6 +249,11 @@ export default function StudentsPage() {
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  
+  // Group modal state - support multiple open windows
+  const [openGroupModals, setOpenGroupModals] = useState<Record<number, boolean>>({});
+  const [groupModalData, setGroupModalData] = useState<Record<number, GroupDetails>>({});
+  const [loadingGroupData, setLoadingGroupData] = useState<Record<number, boolean>>({});
   const [studentGroupsWarning, setStudentGroupsWarning] = useState<{id: number; title: string; course_title: string}[]>([]);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -231,6 +278,14 @@ export default function StudentsPage() {
   // Courses for dropdown
   const [courses, setCourses] = useState<Course[]>([]);
   const [coursesDropdownOpen, setCoursesDropdownOpen] = useState(false);
+  
+  // Groups for filtering
+  const [groups, setGroups] = useState<{id: number; title: string; course_id: number; course_title: string}[]>([]);
+  
+  // Filter states
+  const [courseFilter, setCourseFilter] = useState('');
+  const [groupFilter, setGroupFilter] = useState('');
+  const [selectedAges, setSelectedAges] = useState<number[]>([]);
 
   // Note editing state
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
@@ -266,6 +321,16 @@ export default function StudentsPage() {
         const studentsRes = await fetch('/api/students?withGroups=true');
         const studentsData = await studentsRes.json();
         setStudents(studentsData.students || []);
+        
+        // Fetch courses for filter
+        const coursesRes = await fetch('/api/courses');
+        const coursesData = await coursesRes.json();
+        setCourses(coursesData.courses || []);
+        
+        // Fetch groups for filter
+        const groupsRes = await fetch('/api/groups?includeInactive=true');
+        const groupsData = await groupsRes.json();
+        setGroups(groupsData.groups || []);
       } catch (error) {
         console.error('Failed to fetch students:', error);
       } finally {
@@ -299,14 +364,76 @@ export default function StudentsPage() {
     }
   };
 
+  // Filter handlers
+  const handleCourseFilterChange = (courseId: string) => {
+    setCourseFilter(courseId);
+    // Reset group filter when course changes
+    if (courseId) {
+      setGroupFilter('');
+    }
+  };
+
+  const handleGroupFilterChange = (groupId: string) => {
+    setGroupFilter(groupId);
+  };
+
+  const handleAgeFilterToggle = (age: number) => {
+    setSelectedAges(prev => 
+      prev.includes(age) 
+        ? prev.filter(a => a !== age)
+        : [...prev, age]
+    );
+  };
+
+  const handleClearAgeFilter = () => {
+    setSelectedAges([]);
+  };
+
+  // Filter students based on selected filters
+  const filteredStudents = students.filter(student => {
+    // Course filter
+    if (courseFilter) {
+      const studentCourses = student.groups?.map(g => g.course_title) || [];
+      const course = courses.find(c => c.id === parseInt(courseFilter));
+      if (course && !studentCourses.includes(course.title)) {
+        return false;
+      }
+    }
+
+    // Group filter
+    if (groupFilter) {
+      const studentGroupIds = student.groups?.map(g => g.id) || [];
+      if (!studentGroupIds.includes(parseInt(groupFilter))) {
+        return false;
+      }
+    }
+
+    // Age filter
+    if (selectedAges.length > 0) {
+      const age = calculateAge(student.birth_date);
+      if (age === null || !selectedAges.includes(age)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Get unique ages from all students
+  const allAges = Array.from(new Set(students
+    .map(s => calculateAge(s.birth_date))
+    .filter((a): a is number => a !== null)
+    .sort((a, b) => a - b)
+  ));
+
   // Copy phone to clipboard
   const copyPhone = async (phone: string | null, type: 'main' | 'parent') => {
     if (!phone) return;
     
     try {
       await navigator.clipboard.writeText(phone);
-      setCopiedPhone(`${type}-${phone}`);
-      setTimeout(() => setCopiedPhone(null), 2000);
+      setCopiedField(`${type}-${phone}`);
+      setTimeout(() => setCopiedField(null), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
@@ -726,6 +853,68 @@ export default function StudentsPage() {
     setDeleteError('');
   };
 
+  // Open group modal and load data
+  const handleOpenGroupModal = async (group: StudentGroup) => {
+    // Add to localStorage for global manager
+    try {
+      const stored = localStorage.getItem('itrobot-group-modals');
+      const modals = stored ? JSON.parse(stored) : [];
+      
+      // Check if already open
+      if (!modals.find((m: any) => m.id === group.id)) {
+        modals.push({
+          id: group.id,
+          title: group.title,
+          position: { x: 100 + Math.random() * 100, y: 100 + Math.random() * 100 },
+          size: { width: 520, height: 480 },
+        });
+        localStorage.setItem('itrobot-group-modals', JSON.stringify(modals));
+      }
+    } catch (e) {
+      console.error('Error saving modal state:', e);
+    }
+    
+    // Also open locally for current page
+    setOpenGroupModals(prev => ({ ...prev, [group.id]: true }));
+    
+    // Load group details if not already loaded
+    if (!groupModalData[group.id]) {
+      setLoadingGroupData(prev => ({ ...prev, [group.id]: true }));
+      try {
+        const response = await fetch(`/api/groups/${group.id}?withStudents=true`);
+        if (response.ok) {
+          const data = await response.json();
+          setGroupModalData(prev => ({ ...prev, [group.id]: data }));
+        }
+      } catch (error) {
+        console.error('Error loading group:', error);
+      } finally {
+        setLoadingGroupData(prev => ({ ...prev, [group.id]: false }));
+      }
+    }
+  };
+
+  // Close group modal
+  const handleCloseGroupModal = (groupId: number) => {
+    setOpenGroupModals(prev => {
+      const newState = { ...prev };
+      delete newState[groupId];
+      return newState;
+    });
+    
+    // Remove from localStorage
+    try {
+      const stored = localStorage.getItem('itrobot-group-modals');
+      if (stored) {
+        const modals = JSON.parse(stored);
+        const newModals = modals.filter((m: any) => m.id !== groupId);
+        localStorage.setItem('itrobot-group-modals', JSON.stringify(newModals));
+      }
+    } catch (e) {
+      console.error('Error removing modal state:', e);
+    }
+  };
+
   const handlePhoneChange = (field: 'phone' | 'parent_phone', value: string) => {
     const formatted = formatPhoneNumber(value);
     setFormData({ ...formData, [field]: formatted });
@@ -883,33 +1072,114 @@ export default function StudentsPage() {
   return (
     <Layout user={user}>
       <div className="card">
-        <div className="card-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
-            <input
-              type="text"
-              className="form-input"
-              placeholder={`${t('actions.search')} ${t('nav.students').toLowerCase()}...`}
-              value={search}
-              onChange={(e) => handleSearch(e.target.value)}
-              style={{ maxWidth: '300px' }}
-            />
-          </div>
-          {user.role === 'admin' && (
-            <button className="btn btn-primary" onClick={handleCreate}>
-              + {t('modals.newStudent')}
-            </button>
+        <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+          {/* Search */}
+          <input
+            type="text"
+            className="form-input"
+            placeholder={`${t('actions.search')} ${t('nav.students').toLowerCase()}...`}
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={{ width: '200px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
+          />
+
+          {/* Course filter */}
+          <select
+            className="form-input"
+            value={courseFilter}
+            onChange={(e) => handleCourseFilterChange(e.target.value)}
+            style={{ width: '160px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
+          >
+            <option value="">Курс</option>
+            {courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.title}
+              </option>
+            ))}
+          </select>
+
+          {/* Group filter */}
+          <select
+            className="form-input"
+            value={groupFilter}
+            onChange={(e) => handleGroupFilterChange(e.target.value)}
+            style={{ width: '180px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
+          >
+            <option value="">Група</option>
+            {groups
+              .filter(g => !courseFilter || g.course_id === parseInt(courseFilter))
+              .map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.title}
+                </option>
+              ))}
+          </select>
+
+          {/* Age filter - interactive multi-select chips */}
+          {allAges.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              {allAges.map((age) => (
+                <button
+                  key={age}
+                  onClick={() => handleAgeFilterToggle(age)}
+                  style={{
+                    padding: '0.5rem 0.625rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: selectedAges.includes(age) ? '600' : '400',
+                    borderRadius: '0.375rem',
+                    border: selectedAges.includes(age) ? '1px solid #374151' : '1px solid #e5e7eb',
+                    backgroundColor: selectedAges.includes(age) ? '#374151' : 'white',
+                    color: selectedAges.includes(age) ? 'white' : '#374151',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {age}
+                </button>
+              ))}
+              {selectedAges.length > 0 && (
+                <button
+                  onClick={handleClearAgeFilter}
+                  style={{
+                    padding: '0.5rem 0.625rem',
+                    fontSize: '0.75rem',
+                    borderRadius: '0.375rem',
+                    border: '1px solid #ef4444',
+                    backgroundColor: 'white',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                  title="Очистити фільтр віку"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           )}
+
+          {/* Right side: count and button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
+            <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+              {filteredStudents.length} {filteredStudents.length === 1 ? 'учень' : filteredStudents.length > 1 && filteredStudents.length < 5 ? 'учні' : 'учнів'}
+            </span>
+            {user.role === 'admin' && (
+              <button className="btn btn-primary" onClick={handleCreate}>
+                + {t('modals.newStudent')}
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={{ padding: '0.5rem' }}>
-          {students.length > 0 ? (
+          {filteredStudents.length > 0 ? (
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
               gap: '16px',
               alignItems: 'start',
             }}>
-              {students.map((student) => {
+              {filteredStudents.map((student) => {
                 const age = calculateAge(student.birth_date);
                 const firstLetter = getFirstLetter(student.full_name);
                 
@@ -1213,35 +1483,31 @@ export default function StudentsPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                             {student.phone && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                                </svg>
                                 <span
                                   onClick={() => copyPhone(student.phone, 'main')}
                                   style={{
                                     fontSize: '0.875rem',
-                                    color: '#374151',
+                                    color: copiedField === `main-${student.phone}` ? '#10b981' : '#374151',
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '0.375rem',
                                     transition: 'color 0.15s',
                                   }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = '#4f46e5'; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.color = '#374151'; }}
+                                  onMouseEnter={(e) => { if (copiedField !== `main-${student.phone}`) e.currentTarget.style.color = '#4f46e5'; }}
+                                  onMouseLeave={(e) => { if (copiedField !== `main-${student.phone}`) e.currentTarget.style.color = '#374151'; }}
                                   title="Клікніть щоб скопіювати"
                                 >
-                                  {student.phone}
-                                  {copiedPhone === `main-${student.phone}` ? (
+                                  {copiedField === `main-${student.phone}` ? (
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                       <polyline points="20 6 9 17 4 12" />
                                     </svg>
                                   ) : (
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
-                                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
                                     </svg>
                                   )}
+                                  {student.phone}
                                 </span>
                                 {/* Parent info on same line as phone */}
                                 {(student.parent_name || student.parent_relation) && (
@@ -1255,18 +1521,15 @@ export default function StudentsPage() {
                             )}
                             {student.email && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                                  <polyline points="22,6 12,13 2,6"></polyline>
-                                </svg>
                                 <span
                                   onClick={() => {
                                     navigator.clipboard.writeText(student.email || '');
-                                    setToast({ message: 'Email скопійовано', type: 'success' });
+                                    setCopiedField(`email-${student.email}`);
+                                    setTimeout(() => setCopiedField(null), 2000);
                                   }}
                                   style={{
                                     fontSize: '0.875rem',
-                                    color: '#374151',
+                                    color: copiedField === `email-${student.email}` ? '#10b981' : '#374151',
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -1276,15 +1539,21 @@ export default function StudentsPage() {
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
                                   }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.color = '#4f46e5'; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.color = '#374151'; }}
+                                  onMouseEnter={(e) => { if (copiedField !== `email-${student.email}`) e.currentTarget.style.color = '#4f46e5'; }}
+                                  onMouseLeave={(e) => { if (copiedField !== `email-${student.email}`) e.currentTarget.style.color = '#374151'; }}
                                   title={`${student.email} (клікніть щоб скопіювати)`}
                                 >
+                                  {copiedField === `email-${student.email}` ? (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                  ) : (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                      <polyline points="22,6 12,13 2,6"></polyline>
+                                    </svg>
+                                  )}
                                   {student.email}
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, flexShrink: 0 }}>
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                  </svg>
                                 </span>
                               </div>
                             )}
@@ -1304,9 +1573,9 @@ export default function StudentsPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
                               {student.groups.map((group) => (
-                                <a
+                                <div
                                   key={group.id}
-                                  href={`/groups/${group.id}`}
+                                  onClick={() => handleOpenGroupModal(group)}
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -1320,6 +1589,7 @@ export default function StudentsPage() {
                                     color: '#166534',
                                     fontWeight: 500,
                                     transition: 'all 0.15s',
+                                    cursor: 'pointer',
                                   }}
                                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#dcfce7'; e.currentTarget.style.borderColor = '#4ade80'; }}
                                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#f0fdf4'; e.currentTarget.style.borderColor = '#86efac'; }}
@@ -1331,7 +1601,7 @@ export default function StudentsPage() {
                                     <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                                   </svg>
                                   {group.title}
-                                </a>
+                                </div>
                               ))}
                             </div>
                           </div>
@@ -2220,6 +2490,216 @@ export default function StudentsPage() {
           {toast.message}
         </div>
       )}
+
+      {/* Group Modals - Render all open modals */}
+      {Object.entries(openGroupModals).map(([groupId, isOpen]) => {
+        const id = parseInt(groupId);
+        if (!isOpen) return null;
+        const groupResponse = groupModalData[id];
+        const groupData = groupResponse?.group;
+        const studentsData = groupResponse?.students;
+        const groupInfo = students?.flatMap(s => s.groups || []).find(g => g.id === id);
+        const isLoading = loadingGroupData[id];
+
+        return (
+          <DraggableModal
+            key={id}
+            id={`group-modal-${id}`}
+            isOpen={isOpen}
+            onClose={() => handleCloseGroupModal(id)}
+            title={groupInfo?.title || groupData?.title || 'Група'}
+            groupUrl={`/groups/${id}`}
+            initialWidth={520}
+            initialHeight={480}
+          >
+            {isLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                <div style={{ color: '#6b7280' }}>Завантаження...</div>
+              </div>
+            ) : groupData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Status Badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className={`badge ${groupData.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
+                    {groupData.is_active === 1 ? 'Активна' : 'Неактивна'}
+                  </span>
+                  <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                    {groupData.status === 'active' ? 'Активна' : groupData.status === 'completed' ? 'Завершена' : 'Архівна'}
+                  </span>
+                </div>
+
+                {/* Course */}
+                {groupData.course_title && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Курс</span>
+                    <span style={{ fontSize: '0.9375rem', color: '#1f2937' }}>{groupData.course_title}</span>
+                  </div>
+                )}
+
+                {/* Schedule */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Розклад</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: '#f0f9ff',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #bae6fd',
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                        <line x1="16" y1="2" x2="16" y2="6" />
+                        <line x1="8" y1="2" x2="8" y2="6" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                      </svg>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#0369a1' }}>
+                        {getDayName(groupData.weekly_day)}
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: '#fef3c7',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #fde68a',
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#b45309' }}>
+                        {formatTime(groupData.start_time)}
+                        {groupData.end_time && ` - ${formatTime(groupData.end_time)}`}
+                      </span>
+                    </div>
+                    {groupData.room && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.5rem 0.75rem',
+                        backgroundColor: '#f3e8ff',
+                        borderRadius: '0.5rem',
+                        border: '1px solid #d8b4fe',
+                      }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                          <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#7e22ce' }}>
+                          {groupData.room}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Students Count */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Студенти</span>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.625rem 0.875rem',
+                    backgroundColor: '#ecfdf5',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #a7f3d0',
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#047857' }}>
+                      {studentsData?.length || 0} студентів
+                    </span>
+                  </div>
+                </div>
+
+                {/* Students List */}
+                {studentsData && studentsData.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginTop: '0.5rem' }}>
+                    <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {studentsData.map((student) => (
+                        <div
+                          key={student.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.625rem',
+                            backgroundColor: 'white',
+                            borderRadius: '0.5rem',
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                          }}
+                        >
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            backgroundColor: '#dbeafe',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            border: '2px solid #bfdbfe',
+                          }}>
+                            {student.photo ? (
+                              <img 
+                                src={student.photo} 
+                                alt={student.full_name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <span style={{
+                                fontSize: '0.8125rem',
+                                fontWeight: 600,
+                                color: '#2563eb',
+                              }}>
+                                {student.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: '500', color: '#111827' }}>{student.full_name}</p>
+                            <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.8125rem', color: '#6b7280' }}>{student.phone || 'Телефон не вказано'}</p>
+                            {student.join_date && (
+                              <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>Доданий: {student.join_date}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {groupData.notes && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Нотатки</span>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#4b5563', lineHeight: 1.5 }}>
+                      {groupData.notes}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                <div style={{ color: '#ef4444' }}>Не вдалося завантажити дані</div>
+              </div>
+            )}
+          </DraggableModal>
+        );
+      })}
     </Layout>
   );
 }

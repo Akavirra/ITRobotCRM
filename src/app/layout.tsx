@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import GroupModalsWrapper from '@/components/GroupModalsWrapper';
 
 export const metadata: Metadata = {
   title: 'Адміністрування школи',
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="uk">
-      <body>{children}</body>
+      <body>
+        {children}
+        <GroupModalsWrapper />
+      </body>
     </html>
   );
 }

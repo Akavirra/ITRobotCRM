@@ -4,7 +4,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Portal from '@/components/Portal';
+import DraggableModal from '@/components/DraggableModal';
 import { t } from '@/i18n/t';
+import { formatDateKyiv } from '@/lib/date-utils';
 
 interface User {
   id: number;
@@ -38,6 +40,35 @@ interface Teacher {
   groups?: TeacherGroup[];
 }
 
+interface GroupDetails {
+  group?: {
+    id: number;
+    public_id: string | null;
+    title: string;
+    status: string;
+    is_active: number;
+    weekly_day: number;
+    start_time: string;
+    end_time: string | null;
+    course_title?: string;
+    course_id?: number;
+    room?: string;
+    notes?: string;
+    students_count?: number;
+  };
+  students?: Array<{
+    id: number;
+    public_id: string;
+    full_name: string;
+    phone: string | null;
+    parent_name: string | null;
+    parent_phone: string | null;
+    join_date: string;
+    student_group_id: number;
+    photo: string | null;
+  }>;
+}
+
 export default function TeachersPage() {
   const [user, setUser] = useState<User | null>(null);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -67,6 +98,14 @@ export default function TeachersPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Group modal state - support multiple open windows
+  const [openGroupModals, setOpenGroupModals] = useState<Record<number, boolean>>({});
+  const [groupModalData, setGroupModalData] = useState<Record<number, GroupDetails>>({});
+  const [loadingGroupData, setLoadingGroupData] = useState<Record<number, boolean>>({});
+
+  // Copy to clipboard state
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     // Check auth
@@ -177,8 +216,76 @@ export default function TeachersPage() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, fieldId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  // Open group modal and load data
+  const handleOpenGroupModal = async (group: TeacherGroup) => {
+    // Add to localStorage for global manager
+    try {
+      const stored = localStorage.getItem('itrobot-group-modals');
+      const modals = stored ? JSON.parse(stored) : [];
+      
+      // Check if already open
+      if (!modals.find((m: any) => m.id === group.id)) {
+        modals.push({
+          id: group.id,
+          title: group.title,
+          position: { x: 100 + Math.random() * 100, y: 100 + Math.random() * 100 },
+          size: { width: 520, height: 480 },
+        });
+        localStorage.setItem('itrobot-group-modals', JSON.stringify(modals));
+      }
+    } catch (e) {
+      console.error('Error saving modal state:', e);
+    }
+    
+    // Also open locally for current page
+    setOpenGroupModals(prev => ({ ...prev, [group.id]: true }));
+    
+    // Load group details if not already loaded
+    if (!groupModalData[group.id]) {
+      setLoadingGroupData(prev => ({ ...prev, [group.id]: true }));
+      try {
+        const response = await fetch(`/api/groups/${group.id}?withStudents=true`);
+        if (response.ok) {
+          const data = await response.json();
+          setGroupModalData(prev => ({ ...prev, [group.id]: data }));
+        }
+      } catch (error) {
+        console.error('Error loading group:', error);
+      } finally {
+        setLoadingGroupData(prev => ({ ...prev, [group.id]: false }));
+      }
+    }
+  };
+
+  // Close group modal
+  const handleCloseGroupModal = (groupId: number) => {
+    setOpenGroupModals(prev => {
+      const newState = { ...prev };
+      delete newState[groupId];
+      return newState;
+    });
+    
+    // Remove from localStorage
+    try {
+      const stored = localStorage.getItem('itrobot-group-modals');
+      if (stored) {
+        const modals = JSON.parse(stored);
+        const newModals = modals.filter((m: any) => m.id !== groupId);
+        localStorage.setItem('itrobot-group-modals', JSON.stringify(newModals));
+      }
+    } catch (e) {
+      console.error('Error removing modal state:', e);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -549,67 +656,88 @@ export default function TeachersPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                           {teacher.phone && (
                             <div 
-                              onClick={(e) => { e.stopPropagation(); copyToClipboard(teacher.phone!); }}
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(teacher.phone!, `phone-${teacher.id}`); }}
                               style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
                                 gap: '0.375rem',
                                 fontSize: '0.8125rem', 
-                                color: '#6b7280',
+                                color: copiedField === `phone-${teacher.id}` ? '#10b981' : '#6b7280',
                                 cursor: 'pointer',
                                 transition: 'color 0.15s',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = '#2563eb'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = '#6b7280'; }}
+                              onMouseEnter={(e) => { if (copiedField !== `phone-${teacher.id}`) e.currentTarget.style.color = '#2563eb'; }}
+                              onMouseLeave={(e) => { if (copiedField !== `phone-${teacher.id}`) e.currentTarget.style.color = '#6b7280'; }}
+                              title="Клікніть щоб скопіювати"
                             >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                              </svg>
+                              {copiedField === `phone-${teacher.id}` ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                                </svg>
+                              )}
                               <span style={{ wordBreak: 'break-all' }}>{teacher.phone}</span>
                             </div>
                           )}
                           
                           {teacher.email && (
                             <div 
-                              onClick={(e) => { e.stopPropagation(); copyToClipboard(teacher.email); }}
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(teacher.email, `email-${teacher.id}`); }}
                               style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
                                 gap: '0.375rem',
                                 fontSize: '0.8125rem', 
-                                color: '#6b7280',
+                                color: copiedField === `email-${teacher.id}` ? '#10b981' : '#6b7280',
                                 cursor: 'pointer',
                                 transition: 'color 0.15s',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = '#2563eb'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = '#6b7280'; }}
+                              onMouseEnter={(e) => { if (copiedField !== `email-${teacher.id}`) e.currentTarget.style.color = '#2563eb'; }}
+                              onMouseLeave={(e) => { if (copiedField !== `email-${teacher.id}`) e.currentTarget.style.color = '#6b7280'; }}
+                              title="Клікніть щоб скопіювати"
                             >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                                <polyline points="22,6 12,13 2,6" />
-                              </svg>
+                              {copiedField === `email-${teacher.id}` ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                  <polyline points="22,6 12,13 2,6" />
+                                </svg>
+                              )}
                               <span style={{ wordBreak: 'break-all' }}>{teacher.email}</span>
                             </div>
                           )}
 
                           {teacher.telegram_id && (
                             <div 
-                              onClick={(e) => { e.stopPropagation(); copyToClipboard(teacher.telegram_id!); }}
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(teacher.telegram_id!, `telegram-${teacher.id}`); }}
                               style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
                                 gap: '0.375rem',
                                 fontSize: '0.8125rem', 
-                                color: '#6b7280',
+                                color: copiedField === `telegram-${teacher.id}` ? '#10b981' : '#6b7280',
                                 cursor: 'pointer',
                                 transition: 'color 0.15s',
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = '#2563eb'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = '#6b7280'; }}
+                              onMouseEnter={(e) => { if (copiedField !== `telegram-${teacher.id}`) e.currentTarget.style.color = '#2563eb'; }}
+                              onMouseLeave={(e) => { if (copiedField !== `telegram-${teacher.id}`) e.currentTarget.style.color = '#6b7280'; }}
+                              title="Клікніть щоб скопіювати"
                             >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                              </svg>
+                              {copiedField === `telegram-${teacher.id}` ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                                </svg>
+                              )}
                               <span>@{teacher.telegram_id}</span>
                             </div>
                           )}
@@ -643,9 +771,9 @@ export default function TeachersPage() {
                       }}>
                         {teacher.groups && teacher.groups.length > 0 ? (
                           teacher.groups.map((group) => (
-                            <a
+                            <button
                               key={group.id}
-                              href={`/groups/${group.id}`}
+                              onClick={() => handleOpenGroupModal(group)}
                               style={{
                                 display: 'flex',
                                 alignItems: 'center',
@@ -659,6 +787,9 @@ export default function TeachersPage() {
                                 transition: 'all 0.2s ease',
                                 border: '1px solid #bbf7d0',
                                 boxShadow: '0 1px 2px rgba(22, 163, 74, 0.05)',
+                                cursor: 'pointer',
+                                width: '100%',
+                                textAlign: 'left',
                               }}
                               onMouseEnter={(e) => { 
                                 e.currentTarget.style.transform = 'translateY(-1px)';
@@ -710,16 +841,19 @@ export default function TeachersPage() {
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, flexShrink: 0 }}>
                                 <polyline points="9 18 15 12 9 6" />
                               </svg>
-                            </a>
+                            </button>
                           ))
                         ) : (
                           <div style={{ 
-                            textAlign: 'center', 
-                            padding: '1.5rem', 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            padding: '1rem', 
                             color: '#9ca3af',
                             fontSize: '0.8125rem',
                           }}>
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 0.5rem', opacity: 0.5 }}>
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.5rem', opacity: 0.5 }}>
                               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                               <circle cx="9" cy="7" r="4" />
                               <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -946,6 +1080,219 @@ export default function TeachersPage() {
           {toast.message}
         </div>
       )}
+
+      {/* Group Modals - Render all open modals */}
+      {Object.entries(openGroupModals).map(([groupId, isOpen]) => {
+        const id = parseInt(groupId);
+        if (!isOpen) return null;
+        const groupResponse = groupModalData[id];
+        const groupData = groupResponse?.group;
+        const studentsData = groupResponse?.students;
+        const groupInfo = teachers
+          .flatMap(t => t.groups || [])
+          .find(g => g.id === id);
+        const isLoading = loadingGroupData[id];
+
+        return (
+          <DraggableModal
+            key={id}
+            id={`group-modal-${id}`}
+            isOpen={isOpen}
+            onClose={() => handleCloseGroupModal(id)}
+            title={groupInfo?.title || groupData?.title || 'Група'}
+            groupUrl={`/groups/${id}`}
+            initialWidth={520}
+            initialHeight={480}
+          >
+            {isLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                <div style={{ color: '#6b7280' }}>Завантаження...</div>
+              </div>
+            ) : groupData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Status Badge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className={`badge ${groupData.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
+                    {groupData.is_active === 1 ? 'Активна' : 'Неактивна'}
+                  </span>
+                  <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                    {groupData.status === 'active' ? 'Активна' : groupData.status === 'completed' ? 'Завершена' : 'Архівна'}
+                  </span>
+                </div>
+
+                {/* Course */}
+                {groupData.course_title && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Курс</span>
+                    <span style={{ fontSize: '0.9375rem', color: '#1f2937' }}>{groupData.course_title}</span>
+                  </div>
+                )}
+
+                {/* Schedule */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Розклад</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: '#f0f9ff',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #bae6fd',
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                        <line x1="16" y1="2" x2="16" y2="6" />
+                        <line x1="8" y1="2" x2="8" y2="6" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                      </svg>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#0369a1' }}>
+                        {getDayName(groupData.weekly_day)}
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      backgroundColor: '#fef3c7',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #fde68a',
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#b45309' }}>
+                        {formatTime(groupData.start_time)}
+                        {groupData.end_time && ` - ${formatTime(groupData.end_time)}`}
+                      </span>
+                    </div>
+                    {groupData.room && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.5rem 0.75rem',
+                        backgroundColor: '#f3e8ff',
+                        borderRadius: '0.5rem',
+                        border: '1px solid #d8b4fe',
+                      }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                          <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#7e22ce' }}>
+                          {groupData.room}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Students Count */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Студенти</span>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.625rem 0.875rem',
+                    backgroundColor: '#ecfdf5',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #a7f3d0',
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#047857' }}>
+                      {studentsData?.length || 0} студентів
+                    </span>
+                  </div>
+                </div>
+
+                {/* Students List */}
+                {studentsData && studentsData.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginTop: '0.5rem' }}>
+                    <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {studentsData.map((student: { id: number; public_id: string; full_name: string; phone: string | null; join_date: string; student_group_id: number; photo: string | null }) => (
+                        <div
+                          key={student.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            padding: '0.625rem',
+                            backgroundColor: 'white',
+                            borderRadius: '0.5rem',
+                            border: '1px solid #e5e7eb',
+                            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                          }}
+                        >
+                          {/* Avatar */}
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            backgroundColor: '#dbeafe',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            border: '2px solid #bfdbfe',
+                          }}>
+                            {student.photo ? (
+                              <img 
+                                src={student.photo} 
+                                alt={student.full_name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <span style={{
+                                fontSize: '0.8125rem',
+                                fontWeight: 600,
+                                color: '#2563eb',
+                              }}>
+                                {student.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: '500', color: '#111827' }}>{student.full_name}</p>
+                            <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.8125rem', color: '#6b7280' }}>{student.phone || 'Телефон не вказано'}</p>
+                            {student.join_date ? (
+                              <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>Доданий: {formatDateKyiv(student.join_date)}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {groupData.notes && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Нотатки</span>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#4b5563', lineHeight: 1.5 }}>
+                      {groupData.notes}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                <div style={{ color: '#ef4444' }}>Не вдалося завантажити дані</div>
+              </div>
+            )}
+          </DraggableModal>
+        );
+      })}
     </Layout>
   );
 }
