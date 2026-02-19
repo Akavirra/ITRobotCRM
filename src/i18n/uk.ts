@@ -341,6 +341,7 @@ export const uk = {
     editCourse: 'Редагувати курс',
     newStudent: 'Новий учень',
     editStudent: 'Редагувати дані учня',
+    newTeacher: 'Новий викладач',
     newUser: 'Новий користувач',
     newGroup: 'Нова група',
     editGroup: 'Редагувати групу',

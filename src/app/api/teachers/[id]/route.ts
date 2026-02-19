@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, unauthorized, isAdmin, forbidden, notFound, badRequest } from '@/lib/api-utils';
 import { get, all, run } from '@/db';
-import { hashPassword } from '@/lib/auth';
+import { hashPassword, verifyPassword } from '@/lib/auth';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -84,15 +84,15 @@ export async function PUT(
   
   try {
     const body = await request.json();
-    const { name, email, phone, telegram_id, photo_url, notes, password } = body;
+    const { name, email, phone, telegram_id, notes, photo } = body;
     
     if (!name || !email) {
       return badRequest("Ім'я та email обов'язкові");
     }
     
     // Check if teacher exists
-    const existingTeacher = get<{ id: number }>(
-      `SELECT id FROM users WHERE id = ? AND role = 'teacher'`,
+    const existingTeacher = get<{ id: number; public_id: string | null }>(
+      `SELECT id, public_id FROM users WHERE id = ? AND role = 'teacher'`,
       [params.id]
     );
     
@@ -100,15 +100,39 @@ export async function PUT(
       return notFound(ERROR_MESSAGES.teacherNotFound);
     }
     
-    // Build update query based on whether password is provided
-    let updateQuery = `UPDATE users
-     SET name = ?, email = ?, phone = ?, telegram_id = ?, photo_url = ?, notes = ?, updated_at = CURRENT_TIMESTAMP`;
-    let updateParams = [name.trim(), email.trim().toLowerCase(), phone || null, telegram_id || null, photo_url || null, notes || null];
+    // Handle photo - save to file system if base64
+    let photoUrl = null;
+    if (photo && photo.startsWith('data:')) {
+      const fs = require('fs');
+      const path = require('path');
+      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'teacher-photos');
+      
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const base64Data = photo.replace(/^data:image\/\w+;base64,/, '');
+      const fileName = `teacher-${existingTeacher.public_id || params.id}-${Date.now()}.jpg`;
+      const filePath = path.join(uploadsDir, fileName);
+      
+      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+      photoUrl = `/uploads/teacher-photos/${fileName}`;
+    } else if (photo === null) {
+      // Photo was removed - set to null
+      photoUrl = null;
+    } else if (photo) {
+      // Photo is a URL (unchanged)
+      photoUrl = photo;
+    }
     
-    if (password) {
-      const hashedPassword = await hashPassword(password);
-      updateQuery += `, password_hash = ?`;
-      updateParams.push(hashedPassword);
+    // Build update query
+    let updateQuery = `UPDATE users
+     SET name = ?, email = ?, phone = ?, telegram_id = ?, notes = ?, updated_at = CURRENT_TIMESTAMP`;
+    let updateParams = [name.trim(), email.trim().toLowerCase(), phone || null, telegram_id || null, notes || null];
+    
+    if (photoUrl !== undefined) {
+      updateQuery += `, photo_url = ?`;
+      updateParams.push(photoUrl);
     }
     
     updateQuery += ` WHERE id = ? AND role = 'teacher'`;
@@ -129,7 +153,10 @@ export async function PUT(
   }
 }
 
-// DELETE /api/teachers/[id] - Deactivate teacher
+// DELETE /api/teachers/[id] - Check groups, deactivate or permanently delete teacher
+// Query params:
+//   - check=true: Returns group information without deleting (for pre-delete warning)
+//   - permanent=true&force=true: Permanently delete teacher (bypasses group check)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -144,17 +171,147 @@ export async function DELETE(
     return forbidden();
   }
   
-  // Check if teacher has active groups
-  const activeGroups = get<{ count: number }>(
-    `SELECT COUNT(*) as count FROM groups WHERE teacher_id = ? AND is_active = 1`,
+  const { searchParams } = new URL(request.url);
+  const checkOnly = searchParams.get('check') === 'true';
+  const permanent = searchParams.get('permanent') === 'true';
+  const force = searchParams.get('force') === 'true';
+  
+  // Handle permanent force delete with password confirmation
+  if (permanent && force) {
+    // Parse request body for password confirmation
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'Пароль обов\'язковий' },
+        { status: 400 }
+      );
+    }
+    
+    const { password } = body;
+    
+    // Validate password is provided
+    if (!password) {
+      return NextResponse.json(
+        { error: 'Пароль обов\'язковий' },
+        { status: 400 }
+      );
+    }
+    
+    // Get user's password hash from database
+    const userWithPassword = get<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = ?`,
+      [user.id]
+    );
+    
+    if (!userWithPassword) {
+      return unauthorized();
+    }
+    
+    // Verify password
+    const isValidPassword = await verifyPassword(password, userWithPassword.password_hash);
+    
+    if (!isValidPassword) {
+      return NextResponse.json({ error: 'Невірний пароль' }, { status: 401 });
+    }
+    
+    // Get teacher's active groups before deletion
+    const activeGroups = all<{
+      id: number;
+      title: string;
+      course_title: string;
+    }>(
+      `SELECT g.id, g.title, c.title as course_title
+       FROM groups g
+       LEFT JOIN courses c ON g.course_id = c.id
+       WHERE g.teacher_id = ? AND g.is_active = 1`,
+      [params.id]
+    );
+    
+    // Remove teacher from groups (set to null)
+    run(`UPDATE groups SET teacher_id = NULL WHERE teacher_id = ?`, [params.id]);
+    
+    // Permanently delete the teacher
+    run(`DELETE FROM users WHERE id = ? AND role = 'teacher'`, [params.id]);
+    
+    return NextResponse.json({ 
+      message: 'Викладача остаточно видалено',
+      deletedGroups: activeGroups.length
+    });
+  }
+  
+  // Get teacher's active groups with details
+  const activeGroups = all<{
+    id: number;
+    public_id: string;
+    title: string;
+    course_title: string;
+    weekly_day: number;
+    start_time: string;
+    duration_minutes: number;
+  }>(
+    `SELECT g.id, g.public_id, g.title, c.title as course_title, g.weekly_day, g.start_time, g.duration_minutes
+     FROM groups g
+     LEFT JOIN courses c ON g.course_id = c.id
+     WHERE g.teacher_id = ? AND g.is_active = 1
+     ORDER BY g.weekly_day, g.start_time`,
     [params.id]
   );
   
-  if (activeGroups && activeGroups.count > 0) {
-    return badRequest(`${ERROR_MESSAGES.hasActiveGroups} (${activeGroups.count} груп)`);
+  // If checkOnly mode - return group information for warning dialog
+  if (checkOnly) {
+    if (activeGroups.length > 0) {
+      return NextResponse.json({
+        warning: true,
+        groups: activeGroups.map(g => ({
+          id: g.id,
+          title: g.title,
+          course_title: g.course_title,
+          schedule: `${g.weekly_day}, ${g.start_time}`
+        }))
+      }, { status: 409 });
+    }
+    return NextResponse.json({ canDelete: true });
   }
   
-  // Deactivate instead of delete
+  // Regular delete - check for active groups (only if not permanent)
+  if (!permanent && activeGroups.length > 0) {
+    return NextResponse.json({
+      error: `${ERROR_MESSAGES.hasActiveGroups} (${activeGroups.length} груп)`,
+      warning: true,
+      groups: activeGroups.map(g => ({
+        id: g.id,
+        title: g.title,
+        course_title: g.course_title
+      }))
+    }, { status: 409 });
+  }
+  
+  // Check if teacher is active - if active, deactivate; if already inactive, allow permanent delete
+  const teacher = get<{ is_active: number }>(
+    `SELECT is_active FROM users WHERE id = ? AND role = 'teacher'`,
+    [params.id]
+  );
+  
+  if (!teacher) {
+    return notFound(ERROR_MESSAGES.teacherNotFound);
+  }
+  
+  // If permanent delete requested but teacher is still active, first deactivate
+  if (permanent && teacher.is_active === 1) {
+    run(
+      `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [params.id]
+    );
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Викладача деактивовано. Тепер можна видалити остаточно.',
+      deactivated: true 
+    });
+  }
+  
+  // Default: deactivate the teacher
   run(
     `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     [params.id]

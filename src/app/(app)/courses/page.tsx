@@ -445,13 +445,15 @@ export default function CoursesPage() {
 
   if (!user) return null;
 
-  const filteredCourses = courses.filter(c => {
-    // Filter by archived status
-    if (showArchived) {
-      return c.is_active === 0 && c.title.toLowerCase().includes(search.toLowerCase());
-    }
-    return c.is_active === 1 && c.title.toLowerCase().includes(search.toLowerCase());
-  });
+  const filteredCourses = courses
+    .filter(c => {
+      // Filter by archived status
+      if (showArchived) {
+        return c.is_active === 0 && c.title.toLowerCase().includes(search.toLowerCase());
+      }
+      return c.is_active === 1 && c.title.toLowerCase().includes(search.toLowerCase());
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, 'uk'));
 
   return (
     <Layout user={user}>

@@ -59,12 +59,14 @@ export async function POST(req: NextRequest) {
       return forbidden();
     }
 
-    const { name, email, password, phone, telegram_id, notes } = await req.json();
+    const { name, email, phone, telegram_id, notes, photo } = await req.json();
 
-    if (!name || !email || !password) {
-      return badRequest('Name, email and password are required');
+    if (!name || !email) {
+      return badRequest('Name and email are required');
     }
 
+    // Generate password if not provided (for auto-generated login)
+    const password = Math.random().toString(36).slice(-8);
     const hashedPassword = await hashPassword(password);
     
     // Generate unique public_id
@@ -79,12 +81,38 @@ export async function POST(req: NextRequest) {
       retries++;
     }
 
+    // Handle photo - save to file system if base64
+    let photoUrl = null;
+    if (photo && photo.startsWith('data:')) {
+      // Save photo to uploads folder
+      const fs = require('fs');
+      const path = require('path');
+      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'teacher-photos');
+      
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const base64Data = photo.replace(/^data:image\/\w+;base64,/, '');
+      const fileName = `teacher-${publicId}-${Date.now()}.jpg`;
+      const filePath = path.join(uploadsDir, fileName);
+      
+      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+      photoUrl = `/uploads/teacher-photos/${fileName}`;
+    }
+    
     const result = run(`
-      INSERT INTO users (public_id, name, email, password_hash, role, phone, telegram_id, notes, is_active)
-      VALUES (?, ?, ?, ?, 'teacher', ?, ?, ?, 1)
-    `, [publicId, name, email, hashedPassword, phone || null, telegram_id || null, notes || null]);
+      INSERT INTO users (public_id, name, email, password_hash, role, phone, telegram_id, notes, photo_url, is_active)
+      VALUES (?, ?, ?, ?, 'teacher', ?, ?, ?, ?, 1)
+    `, [publicId, name, email, hashedPassword, phone || null, telegram_id || null, notes || null, photoUrl]);
 
-    return NextResponse.json({ id: result.lastInsertRowid, public_id: publicId, name, email }, { status: 201 });
+    return NextResponse.json({ 
+      id: result.lastInsertRowid, 
+      public_id: publicId, 
+      name, 
+      email,
+      auto_password: password // Return auto-generated password for admin to share
+    }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating teacher:', error);
     if (error.message?.includes('UNIQUE constraint failed') || error.code === 'SQLITE_CONSTRAINT') {

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Portal from '@/components/Portal';
+import { useGroupModals } from '@/components/GroupModalsContext';
 import { uk } from '@/i18n/uk';
 
 interface User {
@@ -46,6 +47,7 @@ interface Group {
 
 export default function GroupsPage() {
   const router = useRouter();
+  const { openGroupModal } = useGroupModals();
   const [user, setUser] = useState<User | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -57,7 +59,8 @@ export default function GroupsPage() {
   const [courseFilter, setCourseFilter] = useState('');
   const [teacherFilter, setTeacherFilter] = useState('');
   const [daysFilter, setDaysFilter] = useState<number[]>([]);
-  const [monthsSort, setMonthsSort] = useState<'asc' | 'desc' | null>(null);
+  // Sort: 'day' - by day of week, 'course' - by course (with day/time), 'months' - by months
+  const [sortBy, setSortBy] = useState<'day' | 'course' | 'months' | null>(null);
   
   // Dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
@@ -549,7 +552,7 @@ export default function GroupsPage() {
 
   if (!user) return null;
 
-  // Filter groups based on archive toggle and sort by months
+  // Filter groups based on archive toggle and sort by selected criteria
   const filteredGroups = groups
     .filter(group => {
       if (showArchived) {
@@ -561,10 +564,23 @@ export default function GroupsPage() {
       return group.status === 'active' && group.title.toLowerCase().includes(search.toLowerCase());
     })
     .sort((a, b) => {
-      if (monthsSort === 'asc') {
+      if (sortBy === 'day') {
+        // Sort by day of week, then by time
+        if (a.weekly_day !== b.weekly_day) {
+          return a.weekly_day - b.weekly_day;
+        }
+        return a.start_time.localeCompare(b.start_time);
+      } else if (sortBy === 'course') {
+        // Sort by course title (alphabetically), then by day, then by time
+        const courseCompare = a.course_title.localeCompare(b.course_title, 'uk');
+        if (courseCompare !== 0) return courseCompare;
+        if (a.weekly_day !== b.weekly_day) {
+          return a.weekly_day - b.weekly_day;
+        }
+        return a.start_time.localeCompare(b.start_time);
+      } else if (sortBy === 'months') {
+        // Sort by months since creation (ascending)
         return getMonthsSinceCreated(a.created_at) - getMonthsSinceCreated(b.created_at);
-      } else if (monthsSort === 'desc') {
-        return getMonthsSinceCreated(b.created_at) - getMonthsSinceCreated(a.created_at);
       }
       return 0;
     });
@@ -615,35 +631,92 @@ export default function GroupsPage() {
             </select>
           )}
 
-          {/* Months sort button */}
-          <button
-            onClick={() => setMonthsSort(monthsSort === 'asc' ? 'desc' : monthsSort === 'desc' ? null : 'asc')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.25rem',
-              padding: '0.5rem 0.875rem',
-              fontSize: '0.875rem',
-              fontWeight: monthsSort ? '600' : '400',
-              borderRadius: '0.375rem',
-              border: monthsSort ? '1px solid #374151' : '1px solid #e5e7eb',
-              backgroundColor: monthsSort ? '#374151' : 'white',
-              color: monthsSort ? 'white' : '#374151',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              {monthsSort === 'asc' ? (
-                <path d="M12 5v14M5 12l7-7 7 7" />
-              ) : monthsSort === 'desc' ? (
-                <path d="M12 19V5M5 12l7 7 7-7" />
-              ) : (
-                <path d="M8 6l4 4 4-4M8 18l4-4 4 4" />
-              )}
-            </svg>
-            Місяців
-          </button>
+          {/* Sort buttons */}
+          <div style={{ display: 'flex', gap: '0.25rem' }}>
+            {/* Sort by day of week */}
+            <button
+              onClick={() => setSortBy(sortBy === 'day' ? null : 'day')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.5rem 0.875rem',
+                fontSize: '0.875rem',
+                fontWeight: sortBy === 'day' ? '600' : '400',
+                borderRadius: '0.375rem',
+                border: sortBy === 'day' ? '1px solid #374151' : '1px solid #e5e7eb',
+                backgroundColor: sortBy === 'day' ? '#374151' : 'white',
+                color: sortBy === 'day' ? 'white' : '#374151',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {sortBy === 'day' ? (
+                  <path d="M12 5v14M5 12l7-7 7 7" />
+                ) : (
+                  <path d="M8 6l4 4 4-4M8 18l4-4 4 4" />
+                )}
+              </svg>
+              День
+            </button>
+
+            {/* Sort by course */}
+            <button
+              onClick={() => setSortBy(sortBy === 'course' ? null : 'course')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.5rem 0.875rem',
+                fontSize: '0.875rem',
+                fontWeight: sortBy === 'course' ? '600' : '400',
+                borderRadius: '0.375rem',
+                border: sortBy === 'course' ? '1px solid #374151' : '1px solid #e5e7eb',
+                backgroundColor: sortBy === 'course' ? '#374151' : 'white',
+                color: sortBy === 'course' ? 'white' : '#374151',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {sortBy === 'course' ? (
+                  <path d="M12 5v14M5 12l7-7 7 7" />
+                ) : (
+                  <path d="M8 6l4 4 4-4M8 18l4-4 4 4" />
+                )}
+              </svg>
+              Курс
+            </button>
+
+            {/* Sort by months */}
+            <button
+              onClick={() => setSortBy(sortBy === 'months' ? null : 'months')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.5rem 0.875rem',
+                fontSize: '0.875rem',
+                fontWeight: sortBy === 'months' ? '600' : '400',
+                borderRadius: '0.375rem',
+                border: sortBy === 'months' ? '1px solid #374151' : '1px solid #e5e7eb',
+                backgroundColor: sortBy === 'months' ? '#374151' : 'white',
+                color: sortBy === 'months' ? 'white' : '#374151',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {sortBy === 'months' ? (
+                  <path d="M12 5v14M5 12l7-7 7 7" />
+                ) : (
+                  <path d="M8 6l4 4 4-4M8 18l4-4 4 4" />
+                )}
+              </svg>
+              Місяців
+            </button>
+          </div>
 
           {/* Days of week filter - compact chips */}
           <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -959,6 +1032,28 @@ export default function GroupsPage() {
                         </div>
                       </td>
                     )}
+                    <td style={{ textAlign: 'right', width: '40px' }}>
+                      <button
+                        onClick={() => {
+                          openGroupModal(group.id, group.title);
+                        }}
+                        style={{
+                          padding: '0.25rem',
+                          borderRadius: '0.25rem',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#6b7280',
+                        }}
+                        title="Відкрити в модальному вікні"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

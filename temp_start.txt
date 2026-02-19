@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useGroupModals } from '@/components/GroupModalsContext';
-import { useStudentModals } from '@/components/StudentModalsContext';
 import Layout from '@/components/Layout';
 import Portal from '@/components/Portal';
+import DraggableModal from '@/components/DraggableModal';
 import { t } from '@/i18n/t';
 import { formatDateKyiv } from '@/lib/date-utils';
 
@@ -119,11 +119,11 @@ const RELATION_OPTIONS = [
 function translateRelation(relation: string | null): string {
   if (!relation) return '';
   const relationMap: Record<string, string> = {
-    'mother': '–ú–∞–º–∞',
-    'father': '–¢–∞—Ç–æ',
-    'grandmother': '–ë–∞–±—É—Å—è',
-    'grandfather': '–î—ñ–¥—É—Å—å',
-    'other': '–Ü–Ω—à–µ',
+    'mother': 'ê?ê¯ê?ê¯',
+    'father': 'ê˜ê¯ë'ê?',
+    'grandmother': 'ê'ê¯ê+ë?ë?ë?',
+    'grandfather': 'ê"ë-ê?ë?ë?ë?',
+    'other': 'ê≈ê?ë?êÁ',
   };
   return relationMap[relation.toLowerCase()] || relation;
 }
@@ -182,13 +182,13 @@ function formatAge(birthDate: string | null): string {
   const age = calculateAge(birthDate);
   if (age === null) return '-';
   
-  // –ü—Ä–∞–≤–∏–ª—å–Ω—ñ –∑–∞–∫—ñ–Ω—á–µ–Ω–Ω—è –¥–ª—è —É–∫—Ä–∞—ó–Ω—Å—å–∫–æ—ó –º–æ–≤–∏
+  // ê?ë?ê¯ê?êÒê>ë?ê?ë- ê˙ê¯êÛë-ê?ëÿêÁê?ê?ë? ê?ê>ë? ë?êÛë?ê¯ë-ê?ë?ë?êÛê?ë- ê?ê?ê?êÒ
   if (age % 10 === 1 && age % 100 !== 11) {
-    return `${age} —Ä—ñ–∫`;
+    return `${age} ë?ë-êÛ`;
   } else if ([2, 3, 4].includes(age % 10) && ![12, 13, 14].includes(age % 100)) {
-    return `${age} —Ä–æ–∫–∏`;
+    return `${age} ë?ê?êÛêÒ`;
   } else {
-    return `${age} —Ä–æ–∫—ñ–≤`;
+    return `${age} ë?ê?êÛë-ê?`;
   }
 }
 
@@ -198,7 +198,7 @@ function getFirstLetter(name: string): string {
 }
 
 function getDayName(day: number): string {
-  const days = ['–ü–Ω', '–í—Ç', '–°—Ä', '–ß—Ç', '–ü—Ç', '–°–±', '–ù–¥'];
+  const days = ['ê?ê?', 'ê'ë'', 'êˆë?', 'êë'', 'ê?ë'', 'êˆê+', 'ê?ê?'];
   return days[day - 1] || '';
 }
 
@@ -251,12 +251,9 @@ export default function StudentsPage() {
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
-  const [studentGroupsWarning, setStudentGroupsWarning] = useState<{id: number; title: string; course_title: string}[]>([]);
   
   // Group modals from context
   const { openGroupModal, closeGroupModal, isModalOpen } = useGroupModals();
-  // Student modals from context
-  const { openStudentModal } = useStudentModals();
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -788,7 +785,7 @@ export default function StudentsPage() {
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Failed to save student:', res.status, errorData);
-        alert(`–ü–æ–º–∏–ª–∫–∞ –∑–±–µ—Ä–µ–∂–µ–Ω–Ω—è: ${errorData.error || res.statusText}`);
+        alert(`ê?ê?ê?êÒê>êÛê¯ ê˙ê+êÁë?êÁêêÁê?ê?ë?: ${errorData.error || res.statusText}`);
         setSaving(false);
         return;
       }
@@ -799,7 +796,7 @@ export default function StudentsPage() {
       setStudents(data.students || []);
     } catch (error) {
       console.error('Failed to save student:', error);
-      alert('–ü–æ–º–∏–ª–∫–∞ –º–µ—Ä–µ–∂—ñ. –°–ø—Ä–æ–±—É–π—Ç–µ —â–µ —Ä–∞–∑.');
+      alert('ê?ê?ê?êÒê>êÛê¯ ê?êÁë?êÁêë-. êˆêıë?ê?ê+ë?ê¸ë'êÁ ë%êÁ ë?ê¯ê˙.');
     } finally {
       setSaving(false);
     }
@@ -859,13 +856,13 @@ export default function StudentsPage() {
         const studentsData = await studentsRes.json();
         setStudents(studentsData.students || []);
       } else if (res.status === 401) {
-        setDeleteError('–ù–µ–≤—ñ—Ä–Ω–∏–π –ø–∞—Ä–æ–ª—å');
+        setDeleteError('ê?êÁê?ë-ë?ê?êÒê¸ êıê¯ë?ê?ê>ë?');
       } else {
-        setDeleteError(data.error || '–°—Ç–∞–ª–∞—Å—è –ø–æ–º–∏–ª–∫–∞. –°–ø—Ä–æ–±—É–π—Ç–µ —â–µ —Ä–∞–∑.');
+        setDeleteError(data.error || 'êˆë'ê¯ê>ê¯ë?ë? êıê?ê?êÒê>êÛê¯. êˆêıë?ê?ê+ë?ê¸ë'êÁ ë%êÁ ë?ê¯ê˙.');
       }
     } catch (error) {
       console.error('Failed to delete student:', error);
-      setDeleteError('–°—Ç–∞–ª–∞—Å—è –ø–æ–º–∏–ª–∫–∞. –°–ø—Ä–æ–±—É–π—Ç–µ —â–µ —Ä–∞–∑.');
+      setDeleteError('êˆë'ê¯ê>ê¯ë?ë? êıê?ê?êÒê>êÛê¯. êˆêıë?ê?ê+ë?ê¸ë'êÁ ë%êÁ ë?ê¯ê˙.');
     } finally {
       setDeleting(false);
     }
@@ -942,7 +939,7 @@ export default function StudentsPage() {
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        alert(`–ü–æ–º–∏–ª–∫–∞ –∑–±–µ—Ä–µ–∂–µ–Ω–Ω—è –Ω–æ—Ç–∞—Ç–∫–∏: ${errorData.error || res.statusText}`);
+        alert(`ê?ê?ê?êÒê>êÛê¯ ê˙ê+êÁë?êÁêêÁê?ê?ë? ê?ê?ë'ê¯ë'êÛêÒ: ${errorData.error || res.statusText}`);
         setSavingNote(false);
         return;
       }
@@ -956,14 +953,14 @@ export default function StudentsPage() {
       setNoteText('');
     } catch (error) {
       console.error('Failed to save note:', error);
-      alert('–ü–æ–º–∏–ª–∫–∞ –º–µ—Ä–µ–∂—ñ. –°–ø—Ä–æ–±—É–π—Ç–µ —â–µ —Ä–∞–∑.');
+      alert('ê?ê?ê?êÒê>êÛê¯ ê?êÁë?êÁêë-. êˆêıë?ê?ê+ë?ê¸ë'êÁ ë%êÁ ë?ê¯ê˙.');
     } finally {
       setSavingNote(false);
     }
   };
 
   const clearNote = async (studentId: number) => {
-    if (!confirm('–û—á–∏—Å—Ç–∏—Ç–∏ –Ω–æ—Ç–∞—Ç–∫—É?')) return;
+    if (!confirm('ê?ëÿêÒë?ë'êÒë'êÒ ê?ê?ë'ê¯ë'êÛë??')) return;
     
     setSavingNote(true);
     try {
@@ -975,7 +972,7 @@ export default function StudentsPage() {
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        alert(`–ü–æ–º–∏–ª–∫–∞ –æ—á–∏—â–µ–Ω–Ω—è –Ω–æ—Ç–∞—Ç–∫–∏: ${errorData.error || res.statusText}`);
+        alert(`ê?ê?ê?êÒê>êÛê¯ ê?ëÿêÒë%êÁê?ê?ë? ê?ê?ë'ê¯ë'êÛêÒ: ${errorData.error || res.statusText}`);
         setSavingNote(false);
         return;
       }
@@ -989,7 +986,7 @@ export default function StudentsPage() {
       setNoteText('');
     } catch (error) {
       console.error('Failed to clear note:', error);
-      alert('–ü–æ–º–∏–ª–∫–∞ –º–µ—Ä–µ–∂—ñ. –°–ø—Ä–æ–±—É–π—Ç–µ —â–µ —Ä–∞–∑.');
+      alert('ê?ê?ê?êÒê>êÛê¯ ê?êÁë?êÁêë-. êˆêıë?ê?ê+ë?ê¸ë'êÁ ë%êÁ ë?ê¯ê˙.');
     } finally {
       setSavingNote(false);
     }
@@ -1064,7 +1061,7 @@ export default function StudentsPage() {
             onChange={(e) => handleCourseFilterChange(e.target.value)}
             style={{ width: '160px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
           >
-            <option value="">–ö—É—Ä—Å</option>
+            <option value="">ê?ë?ë?ë?</option>
             {courses.map((course) => (
               <option key={course.id} value={course.id}>
                 {course.title}
@@ -1079,7 +1076,7 @@ export default function StudentsPage() {
             onChange={(e) => handleGroupFilterChange(e.target.value)}
             style={{ width: '180px', padding: '0.5rem 0.875rem', fontSize: '0.875rem' }}
           >
-            <option value="">–ì—Ä—É–ø–∞</option>
+            <option value="">ê"ë?ë?êıê¯</option>
             {groups
               .filter(g => !courseFilter || g.course_id === parseInt(courseFilter))
               .map((group) => (
@@ -1124,9 +1121,9 @@ export default function StudentsPage() {
                     cursor: 'pointer',
                     transition: 'all 0.15s',
                   }}
-                  title="–û—á–∏—Å—Ç–∏—Ç–∏ —Ñ—ñ–ª—å—Ç—Ä –≤—ñ–∫—É"
+                  title="ê?ëÿêÒë?ë'êÒë'êÒ ë"ë-ê>ë?ë'ë? ê?ë-êÛë?"
                 >
-                  ‚úï
+                  ¢?
                 </button>
               )}
             </div>
@@ -1135,12 +1132,12 @@ export default function StudentsPage() {
           {/* Right side: count and button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
             <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
-              {filteredStudents.length} {filteredStudents.length === 1 ? '—É—á–µ–Ω—å' : filteredStudents.length > 1 && filteredStudents.length < 5 ? '—É—á–Ω—ñ' : '—É—á–Ω—ñ–≤'}
+              {filteredStudents.length} {filteredStudents.length === 1 ? 'ë?ëÿêÁê?ë?' : filteredStudents.length > 1 && filteredStudents.length < 5 ? 'ë?ëÿê?ë-' : 'ë?ëÿê?ë-ê?'}
             </span>
             
             {/* Sort buttons */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.75rem', color: '#6b7280', marginRight: '0.25rem' }}>–°–æ—Ä—Ç—É–≤–∞–Ω–Ω—è:</span>
+              <span style={{ fontSize: '0.75rem', color: '#6b7280', marginRight: '0.25rem' }}>êˆê?ë?ë'ë?ê?ê¯ê?ê?ë?:</span>
               <button
                 onClick={() => {
                   if (sortBy === 'name') {
@@ -1164,11 +1161,11 @@ export default function StudentsPage() {
                   gap: '0.25rem',
                   transition: 'all 0.15s',
                 }}
-                title="–°–æ—Ä—Ç—É–≤–∞—Ç–∏ –∑–∞ —ñ–º–µ–Ω–µ–º"
+                title="êˆê?ë?ë'ë?ê?ê¯ë'êÒ ê˙ê¯ ë-ê?êÁê?êÁê?"
               >
-                –ê-–Ø
+                ê?-êÙ
                 {sortBy === 'name' && (
-                  <span style={{ fontSize: '0.625rem' }}>{sortOrder === 'asc' ? '‚ñ≤' : '‚ñº'}</span>
+                  <span style={{ fontSize: '0.625rem' }}>{sortOrder === 'asc' ? '¢-?' : '¢-?'}</span>
                 )}
               </button>
               <button
@@ -1194,11 +1191,11 @@ export default function StudentsPage() {
                   gap: '0.25rem',
                   transition: 'all 0.15s',
                 }}
-                title="–°–æ—Ä—Ç—É–≤–∞—Ç–∏ –∑–∞ –¥–∞—Ç–æ—é —Å—Ç–≤–æ—Ä–µ–Ω–Ω—è"
+                title="êˆê?ë?ë'ë?ê?ê¯ë'êÒ ê˙ê¯ ê?ê¯ë'ê?ë? ë?ë'ê?ê?ë?êÁê?ê?ë?"
               >
-                {sortOrder === 'asc' ? '–ù–∞–π—Å—Ç–∞—Ä—ñ' : '–ù–∞–π–Ω–æ–≤—ñ'}
+                {sortOrder === 'asc' ? 'ê?ê¯ê¸ë?ë'ê¯ë?ë-' : 'ê?ê¯ê¸ê?ê?ê?ë-'}
                 {sortBy === 'created_at' && (
-                  <span style={{ fontSize: '0.625rem' }}>{sortOrder === 'asc' ? '‚ñ≤' : '‚ñº'}</span>
+                  <span style={{ fontSize: '0.625rem' }}>{sortOrder === 'asc' ? '¢-?' : '¢-?'}</span>
                 )}
               </button>
             </div>
@@ -1255,41 +1252,16 @@ export default function StudentsPage() {
                         {student.public_id}
                       </span>
                     </div>
-                    {/* Status Badge */}
-                    <div style={{ position: 'absolute', top: '0.75rem', right: user.role === 'admin' ? '5.5rem' : '2.5rem', zIndex: 1 }}>
+                    {/* Status Badge - fixed top right, moved left */}
+                    <div style={{ position: 'absolute', top: '0.75rem', right: '2.5rem', zIndex: 1 }}>
                       <span className={`badge ${student.study_status === 'studying' ? 'badge-success' : 'badge-gray'}`}>
                         {student.study_status === 'studying' ? t('status.studying') : t('status.notStudying')}
                       </span>
                     </div>
                     
-                    {/* Open in modal button - for all users */}
-                    <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 1 }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openStudentModal(student.id, student.full_name);
-                        }}
-                        style={{
-                          padding: '0.25rem',
-                          borderRadius: '0.25rem',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: '#6b7280',
-                        }}
-                        title="–í—ñ–¥–∫—Ä–∏—Ç–∏ –≤ –º–æ–¥–∞–ª—å–Ω–æ–º—É –≤—ñ–∫–Ω—ñ"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                          <polyline points="15 3 21 3 21 9" />
-                          <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                      </button>
-                    </div>
-                    
-                    {/* Menu - Three dots button (for admins only) */}
+                    {/* Menu - Three dots button at top right, moved up */}
                     {user.role === 'admin' && (
-                      <div style={{ position: 'absolute', top: '0.5rem', right: '2.5rem', zIndex: 1 }}>
+                      <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 1 }}>
                         <button
                           ref={openDropdownId === student.id ? dropdownButtonRef : undefined}
                           className="btn btn-secondary btn-sm"
@@ -1354,7 +1326,7 @@ export default function StudentsPage() {
                                   <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
                                   <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
                                 </svg>
-                                –ü–µ—Ä–µ–≥–ª—è–Ω—É—Ç–∏
+                                ê?êÁë?êÁê?ê>ë?ê?ë?ë'êÒ
                               </a>
                               <button
                                 className="btn"
@@ -1386,7 +1358,7 @@ export default function StudentsPage() {
                                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                 </svg>
-                                –†–µ–¥–∞–≥—É–≤–∞—Ç–∏
+                                êˇêÁê?ê¯ê?ë?ê?ê¯ë'êÒ
                               </button>
                               <button
                                 className="btn"
@@ -1418,7 +1390,7 @@ export default function StudentsPage() {
                                   <polyline points="3 6 5 6 21 6" />
                                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                                 </svg>
-                                –í–∏–¥–∞–ª–∏—Ç–∏
+                                ê'êÒê?ê¯ê>êÒë'êÒ
                               </button>
                             </div>
                           </Portal>
@@ -1469,7 +1441,7 @@ export default function StudentsPage() {
                           {/* Discount Badge on Avatar Corner */}
                           {student.discount && (
                             <div 
-                              title={`–ó–Ω–∏–∂–∫–∞ –Ω–∞ –Ω–∞–≤—á–∞–Ω–Ω—è: ${student.discount.replace(/[^0-9]/g, '')}%`}
+                              title={`ê-ê?êÒêêÛê¯ ê?ê¯ ê?ê¯ê?ëÿê¯ê?ê?ë?: ${student.discount.replace(/[^0-9]/g, '')}%`}
                               style={{
                                 position: 'absolute',
                                 top: '-8px',
@@ -1561,7 +1533,7 @@ export default function StudentsPage() {
                                   }}
                                   onMouseEnter={(e) => { if (copiedField !== `main-${student.phone}`) e.currentTarget.style.color = '#4f46e5'; }}
                                   onMouseLeave={(e) => { if (copiedField !== `main-${student.phone}`) e.currentTarget.style.color = '#374151'; }}
-                                  title="–ö–ª—ñ–∫–Ω—ñ—Ç—å —â–æ–± —Å–∫–æ–ø—ñ—é–≤–∞—Ç–∏"
+                                  title="ê?ê>ë-êÛê?ë-ë'ë? ë%ê?ê+ ë?êÛê?êıë-ë?ê?ê¯ë'êÒ"
                                 >
                                   {copiedField === `main-${student.phone}` ? (
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1606,7 +1578,7 @@ export default function StudentsPage() {
                                   }}
                                   onMouseEnter={(e) => { if (copiedField !== `email-${student.email}`) e.currentTarget.style.color = '#4f46e5'; }}
                                   onMouseLeave={(e) => { if (copiedField !== `email-${student.email}`) e.currentTarget.style.color = '#374151'; }}
-                                  title={`${student.email} (–∫–ª—ñ–∫–Ω—ñ—Ç—å —â–æ–± —Å–∫–æ–ø—ñ—é–≤–∞—Ç–∏)`}
+                                  title={`${student.email} (êÛê>ë-êÛê?ë-ë'ë? ë%ê?ê+ ë?êÛê?êıë-ë?ê?ê¯ë'êÒ)`}
                                 >
                                   {copiedField === `email-${student.email}` ? (
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1689,7 +1661,7 @@ export default function StudentsPage() {
                           <textarea
                             value={noteText}
                             onChange={(e) => setNoteText(e.target.value)}
-                            placeholder="–î–æ–¥–∞—Ç–∏ –Ω–æ—Ç–∞—Ç–∫—É..."
+                            placeholder="ê"ê?ê?ê¯ë'êÒ ê?ê?ë'ê¯ë'êÛë?..."
                             style={{
                               width: '100%',
                               minHeight: '60px',
@@ -1709,7 +1681,7 @@ export default function StudentsPage() {
                               disabled={savingNote}
                               style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                             >
-                              {savingNote ? '...' : '–ó–±–µ—Ä–µ–≥—Ç–∏'}
+                              {savingNote ? '...' : 'ê-ê+êÁë?êÁê?ë'êÒ'}
                             </button>
                             <button
                               className="btn btn-secondary btn-sm"
@@ -1717,7 +1689,7 @@ export default function StudentsPage() {
                               disabled={savingNote}
                               style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                             >
-                              –°–∫–∞—Å—É–≤–∞—Ç–∏
+                              êˆêÛê¯ë?ë?ê?ê¯ë'êÒ
                             </button>
                           </div>
                         </div>
@@ -1746,7 +1718,7 @@ export default function StudentsPage() {
                                 style={{ color: '#b45309', fontWeight: 500, cursor: 'pointer' }}
                                 onClick={() => toggleNoteExpand(student.id)}
                               >
-                                {expandedNotes.has(student.id) ? ' –ó–≥–æ—Ä–Ω—É—Ç–∏' : ' –ß–∏—Ç–∞—Ç–∏ –¥–∞–ª—ñ'}
+                                {expandedNotes.has(student.id) ? ' ê-ê?ê?ë?ê?ë?ë'êÒ' : ' êêÒë'ê¯ë'êÒ ê?ê¯ê>ë-'}
                               </span>
                             )}
                           </span>
@@ -1762,7 +1734,7 @@ export default function StudentsPage() {
                                   color: '#a16207',
                                   opacity: 0.6,
                                 }}
-                                title="–†–µ–¥–∞–≥—É–≤–∞—Ç–∏ –Ω–æ—Ç–∞—Ç–∫—É"
+                                title="êˇêÁê?ê¯ê?ë?ê?ê¯ë'êÒ ê?ê?ë'ê¯ë'êÛë?"
                               >
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -1779,7 +1751,7 @@ export default function StudentsPage() {
                                   color: '#a16207',
                                   opacity: 0.6,
                                 }}
-                                title="–û—á–∏—Å—Ç–∏—Ç–∏ –Ω–æ—Ç–∞—Ç–∫—É"
+                                title="ê?ëÿêÒë?ë'êÒë'êÒ ê?ê?ë'ê¯ë'êÛë?"
                               >
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -1815,7 +1787,7 @@ export default function StudentsPage() {
                           <line x1="12" y1="5" x2="12" y2="19" />
                           <line x1="5" y1="12" x2="19" y2="12" />
                         </svg>
-                        –î–æ–¥–∞—Ç–∏ –Ω–æ—Ç–∞—Ç–∫—É
+                        ê"ê?ê?ê¯ë'êÒ ê?ê?ë'ê¯ë'êÛë?
                       </button>
                     ) : null}
                     </div>
@@ -1856,11 +1828,11 @@ export default function StudentsPage() {
                 onClick={() => setShowModal(false)}
                 style={{ fontSize: '1.5rem', lineHeight: 1, padding: '0.25rem' }}
               >
-                √ó
+                É-
               </button>
             </div>
             <div className="modal-body" style={{ padding: '1.25rem' }}>
-              {/* Block 1: –û—Å–Ω–æ–≤–Ω–∞ —ñ–Ω—Ñ–æ—Ä–º–∞—Ü—ñ—è */}
+              {/* Block 1: ê?ë?ê?ê?ê?ê?ê¯ ë-ê?ë"ê?ë?ê?ê¯ë≈ë-ë? */}
               <div style={{ marginBottom: '1.75rem' }}>
                 <h4 style={{ 
                   fontSize: '0.75rem', 
@@ -1870,7 +1842,7 @@ export default function StudentsPage() {
                   textTransform: 'uppercase', 
                   letterSpacing: '0.05em'
                 }}>
-                  –û—Å–Ω–æ–≤–Ω–∞ —ñ–Ω—Ñ–æ—Ä–º–∞—Ü—ñ—è
+                  ê?ë?ê?ê?ê?ê?ê¯ ë-ê?ë"ê?ë?ê?ê¯ë≈ë-ë?
                 </h4>
                 
                 {/* First Name and Last Name in one row */}
@@ -2118,7 +2090,7 @@ export default function StudentsPage() {
                 </div>
               </div>
 
-              {/* Block 2: –ö–æ–Ω—Ç–∞–∫—Ç–Ω–∞ —ñ–Ω—Ñ–æ—Ä–º–∞—Ü—ñ—è */}
+              {/* Block 2: ê?ê?ê?ë'ê¯êÛë'ê?ê¯ ë-ê?ë"ê?ë?ê?ê¯ë≈ë-ë? */}
               <div style={{ marginBottom: '1.75rem' }}>
 
                 <div className="form-group">
@@ -2283,7 +2255,7 @@ export default function StudentsPage() {
                 )}
               </div>
 
-              {/* Block 3: –î–æ–¥–∞—Ç–∫–æ–≤–∞ —ñ–Ω—Ñ–æ—Ä–º–∞—Ü—ñ—è */}
+              {/* Block 3: ê"ê?ê?ê¯ë'êÛê?ê?ê¯ ë-ê?ë"ê?ë?ê?ê¯ë≈ë-ë? */}
               <div>
                 <h4 style={{ 
                   fontSize: '0.75rem', 
@@ -2449,12 +2421,12 @@ export default function StudentsPage() {
         <div className="modal-overlay" onClick={handleDeleteCancel}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">–ü—ñ–¥—Ç–≤–µ—Ä–¥–∂–µ–Ω–Ω—è –≤–∏–¥–∞–ª–µ–Ω–Ω—è</h3>
-              <button className="modal-close" onClick={handleDeleteCancel} disabled={deleting}>√ó</button>
+              <h3 className="modal-title">ê?ë-ê?ë'ê?êÁë?ê?êêÁê?ê?ë? ê?êÒê?ê¯ê>êÁê?ê?ë?</h3>
+              <button className="modal-close" onClick={handleDeleteCancel} disabled={deleting}>É-</button>
             </div>
             <div className="modal-body">
               <p style={{ margin: '0 0 1rem 0' }}>
-                –í–∏ –∑–±–∏—Ä–∞—î—Ç–µ—Å—è –æ—Å—Ç–∞—Ç–æ—á–Ω–æ –≤–∏–¥–∞–ª–∏—Ç–∏ —É—á–Ω—è <strong>{studentToDelete.full_name}</strong>.
+                ê'êÒ ê˙ê+êÒë?ê¯ë"ë'êÁë?ë? ê?ë?ë'ê¯ë'ê?ëÿê?ê? ê?êÒê?ê¯ê>êÒë'êÒ ë?ëÿê?ë? <strong>{studentToDelete.full_name}</strong>.
               </p>
               
               {/* Warning about groups */}
@@ -2472,10 +2444,10 @@ export default function StudentsPage() {
                       <line x1="12" y1="9" x2="12" y2="13" />
                       <line x1="12" y1="17" x2="12.01" y2="17" />
                     </svg>
-                    –£—á–µ–Ω—å –±–µ—Ä–µ —É—á–∞—Å—Ç—å —É –≥—Ä—É–ø–∞—Ö
+                    ê?ëÿêÁê?ë? ê+êÁë?êÁ ë?ëÿê¯ë?ë'ë? ë? ê?ë?ë?êıê¯ë:
                   </div>
                   <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#92400e' }}>
-                    –ü—Ä–∏ –≤–∏–¥–∞–ª–µ–Ω–Ω—ñ —É—á–µ–Ω—å –±—É–¥–µ –∞–≤—Ç–æ–º–∞—Ç–∏—á–Ω–æ –≤–∏–ª—É—á–µ–Ω–∏–π –∑ –Ω–∞—Å—Ç—É–ø–Ω–∏—Ö –≥—Ä—É–ø:
+                    ê?ë?êÒ ê?êÒê?ê¯ê>êÁê?ê?ë- ë?ëÿêÁê?ë? ê+ë?ê?êÁ ê¯ê?ë'ê?ê?ê¯ë'êÒëÿê?ê? ê?êÒê>ë?ëÿêÁê?êÒê¸ ê˙ ê?ê¯ë?ë'ë?êıê?êÒë: ê?ë?ë?êı:
                   </p>
                   <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: '#92400e' }}>
                     {studentGroupsWarning.map(group => (
@@ -2488,11 +2460,11 @@ export default function StudentsPage() {
               )}
               
               <p style={{ margin: '0 0 1rem 0', color: '#6b7280', fontSize: '0.875rem' }}>
-                –¶—è –¥—ñ—è –Ω–µ–∑–≤–æ—Ä–æ—Ç–Ω—è. –í—Å—ñ –¥–∞–Ω—ñ –ø—Ä–æ —É—á–Ω—è, –≤–∫–ª—é—á–∞—é—á–∏ –≤—ñ–¥–≤—ñ–¥—É–≤–∞–Ω–Ω—è —Ç–∞ –ø–ª–∞—Ç–µ–∂—ñ, –±—É–¥—É—Ç—å –≤–∏–¥–∞–ª–µ–Ω—ñ.
+                ê≥ë? ê?ë-ë? ê?êÁê˙ê?ê?ë?ê?ë'ê?ë?. ê'ë?ë- ê?ê¯ê?ë- êıë?ê? ë?ëÿê?ë?, ê?êÛê>ë?ëÿê¯ë?ëÿêÒ ê?ë-ê?ê?ë-ê?ë?ê?ê¯ê?ê?ë? ë'ê¯ êıê>ê¯ë'êÁêë-, ê+ë?ê?ë?ë'ë? ê?êÒê?ê¯ê>êÁê?ë-.
               </p>
               
               <p style={{ margin: '0 0 1rem 0' }}>
-                –©–æ–± –ø—ñ–¥—Ç–≤–µ—Ä–¥–∏—Ç–∏ –≤–∏–¥–∞–ª–µ–Ω–Ω—è, –≤–≤–µ–¥—ñ—Ç—å –ø–∞—Ä–æ–ª—å –∞–¥–º—ñ–Ω—ñ—Å—Ç—Ä–∞—Ç–æ—Ä–∞.
+                êcê?ê+ êıë-ê?ë'ê?êÁë?ê?êÒë'êÒ ê?êÒê?ê¯ê>êÁê?ê?ë?, ê?ê?êÁê?ë-ë'ë? êıê¯ë?ê?ê>ë? ê¯ê?ê?ë-ê?ë-ë?ë'ë?ê¯ë'ê?ë?ê¯.
               </p>
               
               <div className="form-group">
@@ -2501,7 +2473,7 @@ export default function StudentsPage() {
                   className="form-input"
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
-                  placeholder="–í–≤–µ–¥—ñ—Ç—å –ø–∞—Ä–æ–ª—å"
+                  placeholder="ê'ê?êÁê?ë-ë'ë? êıê¯ë?ê?ê>ë?"
                   disabled={deleting}
                   autoFocus
                 />
@@ -2522,14 +2494,14 @@ export default function StudentsPage() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={handleDeleteCancel} disabled={deleting}>
-                –°–∫–∞—Å—É–≤–∞—Ç–∏
+                êˆêÛê¯ë?ë?ê?ê¯ë'êÒ
               </button>
               <button
                 className="btn btn-danger"
                 onClick={handleDeleteConfirm}
                 disabled={deleting || !deletePassword.trim()}
               >
-                {deleting ? '–í–∏–¥–∞–ª–µ–Ω–Ω—è...' : '–í–∏–¥–∞–ª–∏—Ç–∏ –æ—Å—Ç–∞—Ç–æ—á–Ω–æ'}
+                {deleting ? 'ê'êÒê?ê¯ê>êÁê?ê?ë?...' : 'ê'êÒê?ê¯ê>êÒë'êÒ ê?ë?ë'ê¯ë'ê?ëÿê?ê?'}
               </button>
             </div>
           </div>
@@ -2554,7 +2526,5 @@ export default function StudentsPage() {
         >
           {toast.message}
         </div>
-      )};
-    </Layout>
-  );
-}
+      )}
+

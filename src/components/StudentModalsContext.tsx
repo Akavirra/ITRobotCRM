@@ -10,19 +10,19 @@ interface StoredModal {
   size?: { width: number; height: number };
 }
 
-interface GroupModalsContextType {
+interface StudentModalsContextType {
   openModals: StoredModal[];
-  openGroupModal: (groupId: number, title: string) => void;
-  closeGroupModal: (groupId: number) => void;
-  updateModalState: (groupId: number, state: Partial<Omit<StoredModal, 'id' | 'title' | 'isOpen'>>) => void;
-  isModalOpen: (groupId: number) => boolean;
+  openStudentModal: (studentId: number, title: string) => void;
+  closeStudentModal: (studentId: number) => void;
+  updateModalState: (studentId: number, state: Partial<Omit<StoredModal, 'id' | 'title' | 'isOpen'>>) => void;
+  isModalOpen: (studentId: number) => boolean;
 }
 
-const GroupModalsContext = createContext<GroupModalsContextType | undefined>(undefined);
+const StudentModalsContext = createContext<StudentModalsContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'itrobot-group-modals';
+const STORAGE_KEY = 'itrobot-student-modals';
 
-export function GroupModalsProvider({ children }: { children: ReactNode }) {
+export function StudentModalsProvider({ children }: { children: ReactNode }) {
   const [openModals, setOpenModals] = useState<StoredModal[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -52,7 +52,7 @@ export function GroupModalsProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (e) {
-      console.error('Error loading modal state:', e);
+      console.error('Error loading student modal state:', e);
     }
     setIsHydrated(true);
   }, []);
@@ -64,63 +64,63 @@ export function GroupModalsProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(openModals));
         // Dispatch event to notify other components in same window
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('itrobot-group-modal-update'));
+          window.dispatchEvent(new Event('itrobot-student-modal-update'));
         }
       } catch (e) {
-        console.error('Error saving modal state:', e);
+        console.error('Error saving student modal state:', e);
       }
     }
   }, [openModals, isHydrated]);
 
-  const openGroupModal = useCallback((groupId: number, title: string) => {
+  const openStudentModal = useCallback((studentId: number, title: string) => {
     setOpenModals(prev => {
       // Check if modal already exists - don't duplicate
-      const existingModal = prev.find(m => m.id === groupId);
+      const existingModal = prev.find(m => m.id === studentId);
       if (existingModal) {
         // Modal already open - just ensure it's marked as open
         return prev.map(m => 
-          m.id === groupId ? { ...m, isOpen: true } : m
+          m.id === studentId ? { ...m, isOpen: true } : m
         );
       }
       // Add new modal with random position to avoid overlapping
       return [
         ...prev,
         {
-          id: groupId,
+          id: studentId,
           title,
           isOpen: true,
-          position: { x: 100 + Math.random() * 100, y: 100 + Math.random() * 100 },
-          size: { width: 520, height: 480 },
+          position: { x: 150 + Math.random() * 100, y: 100 + Math.random() * 100 },
+          size: { width: 520, height: 520 },
         },
       ];
     });
   }, []);
 
-  const closeGroupModal = useCallback((groupId: number) => {
-    setOpenModals(prev => prev.filter(m => m.id !== groupId));
+  const closeStudentModal = useCallback((studentId: number) => {
+    setOpenModals(prev => prev.filter(m => m.id !== studentId));
   }, []);
 
-  const updateModalState = useCallback((groupId: number, state: Partial<Omit<StoredModal, 'id' | 'title' | 'isOpen'>>) => {
+  const updateModalState = useCallback((studentId: number, state: Partial<Omit<StoredModal, 'id' | 'title' | 'isOpen'>>) => {
     setOpenModals(prev => prev.map(m => 
-      m.id === groupId ? { ...m, ...state } : m
+      m.id === studentId ? { ...m, ...state } : m
     ));
   }, []);
 
-  const isModalOpen = useCallback((groupId: number) => {
-    return openModals.some(m => m.id === groupId && m.isOpen);
+  const isModalOpen = useCallback((studentId: number) => {
+    return openModals.some(m => m.id === studentId && m.isOpen);
   }, [openModals]);
 
   return (
-    <GroupModalsContext.Provider value={{ openModals, openGroupModal, closeGroupModal, updateModalState, isModalOpen }}>
+    <StudentModalsContext.Provider value={{ openModals, openStudentModal, closeStudentModal, updateModalState, isModalOpen }}>
       {children}
-    </GroupModalsContext.Provider>
+    </StudentModalsContext.Provider>
   );
 }
 
-export function useGroupModals() {
-  const context = useContext(GroupModalsContext);
+export function useStudentModals() {
+  const context = useContext(StudentModalsContext);
   if (!context) {
-    throw new Error('useGroupModals must be used within GroupModalsProvider');
+    throw new Error('useStudentModals must be used within StudentModalsProvider');
   }
   return context;
 }

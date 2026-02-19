@@ -7,6 +7,7 @@ import { t } from '@/i18n/t';
 import { uk } from '@/i18n/uk';
 import { formatDateTimeKyiv, formatDateKyiv } from '@/lib/date-utils';
 import DraggableModal from '@/components/DraggableModal';
+import { useStudentModals } from '@/components/StudentModalsContext';
 
 interface User {
   id: number;
@@ -241,7 +242,22 @@ export default function StudentProfilePage() {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
-
+  
+  // Student modals - close modal when navigating to this student profile
+  const { closeStudentModal } = useStudentModals();
+  
+  // Close modal when this page mounts
+  useEffect(() => {
+    const numericStudentId = parseInt(studentId);
+    if (!isNaN(numericStudentId) && closeStudentModal) {
+      // Small delay to ensure the modal manager is ready
+      const timer = setTimeout(() => {
+        closeStudentModal(numericStudentId);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [studentId, closeStudentModal]);
+ 
   useEffect(() => {
     const fetchData = async () => {
       try {

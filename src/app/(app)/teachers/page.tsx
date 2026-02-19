@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Portal from '@/components/Portal';
-import DraggableModal from '@/components/DraggableModal';
+import { useGroupModals } from '@/components/GroupModalsContext';
 import { t } from '@/i18n/t';
 import { formatDateKyiv } from '@/lib/date-utils';
 
@@ -80,13 +80,18 @@ export default function TeachersPage() {
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
+    first_name: '',
+    last_name: '',
+    patronymic: '',
     email: '',
-    password: '',
     phone: '',
     telegram_id: '',
-    notes: ''
+    notes: '',
+    photo: null as string | null,
+    photoFile: null as File | null,
   });
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
   const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -98,11 +103,11 @@ export default function TeachersPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [teacherGroupsWarning, setTeacherGroupsWarning] = useState<{id: number; title: string; course_title: string}[]>([]);
+  const [deleteMode, setDeleteMode] = useState<'deactivate' | 'permanent'>('deactivate');
 
-  // Group modal state - support multiple open windows
-  const [openGroupModals, setOpenGroupModals] = useState<Record<number, boolean>>({});
-  const [groupModalData, setGroupModalData] = useState<Record<number, GroupDetails>>({});
-  const [loadingGroupData, setLoadingGroupData] = useState<Record<number, boolean>>({});
+  // Group modals from context
+  const { openGroupModal, closeGroupModal } = useGroupModals();
 
   // Copy to clipboard state
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -144,34 +149,69 @@ export default function TeachersPage() {
   const handleCreate = () => {
     setEditingTeacher(null);
     setFormData({
-      name: '',
+      first_name: '',
+      last_name: '',
+      patronymic: '',
       email: '',
-      password: '',
       phone: '',
       telegram_id: '',
-      notes: ''
+      notes: '',
+      photo: null,
+      photoFile: null,
     });
     setShowModal(true);
   };
 
   const handleEdit = (teacher: Teacher) => {
+    // Parse full name into parts
+    const nameParts = teacher.name.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+    
     setEditingTeacher(teacher);
     setFormData({
-      name: teacher.name,
+      first_name: firstName,
+      last_name: lastName,
+      patronymic: '',
       email: teacher.email,
-      password: '',
-      phone: teacher.phone || '',
+      phone: teacher.phone?.replace('+380', '') || '',
       telegram_id: teacher.telegram_id || '',
-      notes: teacher.notes || ''
+      notes: teacher.notes || '',
+      photo: teacher.photo_url || null,
+      photoFile: null,
     });
     setShowModal(true);
   };
 
-  const handleDeleteClick = (teacher: Teacher) => {
+  const handleDeleteClick = async (teacher: Teacher, mode: 'deactivate' | 'permanent' = 'deactivate') => {
     setTeacherToDelete(teacher);
-    setShowDeleteModal(true);
     setDeletePassword('');
     setDeleteError('');
+    setTeacherGroupsWarning([]);
+    setOpenDropdownId(null);
+    setDeleteMode(mode);
+    
+    // First, check if teacher has active groups
+    try {
+      const res = await fetch(`/api/teachers/${teacher.id}?check=true`, {
+        method: 'DELETE',
+      });
+      
+      const data = await res.json();
+      
+      if (res.status === 409 && data.warning) {
+        // Teacher has groups - show warning
+        setTeacherGroupsWarning(data.groups || []);
+      } else if (data.canDelete) {
+        // Teacher has no groups - clear warning
+        setTeacherGroupsWarning([]);
+      }
+      
+      setShowDeleteModal(true);
+    } catch (error) {
+      console.error('Failed to check teacher groups:', error);
+      setShowDeleteModal(true);
+    }
   };
 
   const confirmDelete = async () => {
@@ -197,16 +237,35 @@ export default function TeachersPage() {
         return;
       }
 
-      const response = await fetch(`/api/teachers/${teacherToDelete?.id}`, {
-        method: 'DELETE'
+      // Build URL based on delete mode
+      const url = deleteMode === 'permanent' 
+        ? `/api/teachers/${teacherToDelete?.id}?permanent=true&force=true`
+        : `/api/teachers/${teacherToDelete?.id}`;
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: deleteMode === 'permanent' ? JSON.stringify({ password: deletePassword }) : undefined
       });
 
       if (response.ok) {
-        setToast({ message: 'Викладача видалено', type: 'success' });
+        const data = await response.json();
+        if (deleteMode === 'permanent') {
+          setToast({ message: 'Викладача остаточно видалено', type: 'success' });
+        } else if (data.deactivated) {
+          setToast({ message: 'Викладача деактивовано. Тепер можна видалити остаточно.', type: 'success' });
+        } else {
+          setToast({ message: 'Викладача деактивовано', type: 'success' });
+        }
+        setTimeout(() => setToast(null), 3000);
         setShowDeleteModal(false);
         loadTeachers();
       } else {
         const error = await response.json();
+        // If still has groups error, update the warning
+        if (error.warning) {
+          setTeacherGroupsWarning(error.groups || []);
+        }
         setDeleteError(error.error || 'Помилка видалення');
       }
     } catch (error) {
@@ -214,6 +273,15 @@ export default function TeachersPage() {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
+    setTeacherToDelete(null);
+    setTeacherGroupsWarning([]);
+    setDeletePassword('');
+    setDeleteError('');
+    setDeleteMode('deactivate');
   };
 
   const copyToClipboard = async (text: string, fieldId: string) => {
@@ -226,79 +294,24 @@ export default function TeachersPage() {
     }
   };
 
-  // Open group modal and load data
-  const handleOpenGroupModal = async (group: TeacherGroup) => {
-    // Add to localStorage for global manager
-    try {
-      const stored = localStorage.getItem('itrobot-group-modals');
-      const modals = stored ? JSON.parse(stored) : [];
-      
-      // Check if already open
-      if (!modals.find((m: any) => m.id === group.id)) {
-        modals.push({
-          id: group.id,
-          title: group.title,
-          position: { x: 100 + Math.random() * 100, y: 100 + Math.random() * 100 },
-          size: { width: 520, height: 480 },
-        });
-        localStorage.setItem('itrobot-group-modals', JSON.stringify(modals));
-      }
-    } catch (e) {
-      console.error('Error saving modal state:', e);
-    }
-    
-    // Also open locally for current page
-    setOpenGroupModals(prev => ({ ...prev, [group.id]: true }));
-    
-    // Load group details if not already loaded
-    if (!groupModalData[group.id]) {
-      setLoadingGroupData(prev => ({ ...prev, [group.id]: true }));
-      try {
-        const response = await fetch(`/api/groups/${group.id}?withStudents=true`);
-        if (response.ok) {
-          const data = await response.json();
-          setGroupModalData(prev => ({ ...prev, [group.id]: data }));
-        }
-      } catch (error) {
-        console.error('Error loading group:', error);
-      } finally {
-        setLoadingGroupData(prev => ({ ...prev, [group.id]: false }));
-      }
-    }
+  // Open group modal - uses global context to prevent duplicates
+  const handleOpenGroupModal = (group: TeacherGroup) => {
+    openGroupModal(group.id, group.title);
   };
 
-  // Close group modal
+  // Close group modal - uses global context
   const handleCloseGroupModal = (groupId: number) => {
-    setOpenGroupModals(prev => {
-      const newState = { ...prev };
-      delete newState[groupId];
-      return newState;
-    });
-    
-    // Remove from localStorage
-    try {
-      const stored = localStorage.getItem('itrobot-group-modals');
-      if (stored) {
-        const modals = JSON.parse(stored);
-        const newModals = modals.filter((m: any) => m.id !== groupId);
-        localStorage.setItem('itrobot-group-modals', JSON.stringify(newModals));
-      }
-    } catch (e) {
-      console.error('Error removing modal state:', e);
-    }
+    closeGroupModal(groupId);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.email) {
+    // Combine name from first_name, last_name and patronymic
+    const fullName = [formData.first_name, formData.last_name, formData.patronymic].filter(Boolean).join(' ');
+    
+    if (!fullName || !formData.email) {
       setToast({ message: 'Заповніть обов\'язкові поля', type: 'error' });
-      return;
-    }
-
-    // If editing, password is optional
-    if (!editingTeacher && !formData.password) {
-      setToast({ message: 'Введіть пароль', type: 'error' });
       return;
     }
 
@@ -306,16 +319,18 @@ export default function TeachersPage() {
       const url = editingTeacher ? `/api/teachers/${editingTeacher.id}` : '/api/teachers';
       const method = editingTeacher ? 'PUT' : 'POST';
 
-      const body: Record<string, string> = {
-        name: formData.name,
+      // Prepare form data for API
+      const body: Record<string, string | null> = {
+        name: fullName,
         email: formData.email,
-        phone: formData.phone,
-        telegram_id: formData.telegram_id,
-        notes: formData.notes
+        phone: formData.phone ? `+380${formData.phone}` : null,
+        telegram_id: formData.telegram_id || null,
+        notes: formData.notes || null,
       };
 
-      if (formData.password) {
-        body.password = formData.password;
+      // Add photo if present (as base64)
+      if (formData.photo && formData.photo.startsWith('data:')) {
+        body.photo = formData.photo;
       }
 
       const response = await fetch(url, {
@@ -327,7 +342,17 @@ export default function TeachersPage() {
       if (response.ok) {
         setToast({ message: editingTeacher ? 'Викладача оновлено' : 'Викладача створено', type: 'success' });
         setShowModal(false);
-        setFormData({ name: '', email: '', password: '', phone: '', telegram_id: '', notes: '' });
+        setFormData({
+          first_name: '',
+          last_name: '',
+          patronymic: '',
+          email: '',
+          phone: '',
+          telegram_id: '',
+          notes: '',
+          photo: null,
+          photoFile: null,
+        });
         loadTeachers();
       } else {
         const error = await response.json();
@@ -335,6 +360,33 @@ export default function TeachersPage() {
       }
     } catch (error) {
       setToast({ message: 'Помилка збереження', type: 'error' });
+    }
+  };
+
+  // Photo upload handlers
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ 
+          ...formData, 
+          photo: reader.result as string,
+          photoFile: file 
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removePhoto = () => {
+    setFormData({ 
+      ...formData, 
+      photo: null, 
+      photoFile: null 
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -897,104 +949,196 @@ export default function TeachersPage() {
       {showModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center',
-          alignItems: 'center', zIndex: 1000
+          background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'center',
+          alignItems: 'center', zIndex: 1000,
+          backdropFilter: 'blur(4px)',
         }}>
           <div style={{
-            background: 'white', padding: '1.5rem', borderRadius: '0.75rem',
-            width: '90%', maxWidth: '500px', maxHeight: '90vh', overflow: 'auto'
+            background: 'white', 
+            padding: '2rem', 
+            borderRadius: '1.25rem',
+            width: '90%', 
+            maxWidth: '520px', 
+            maxHeight: '90vh', 
+            overflow: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            animation: 'modalSlideIn 0.2s ease-out',
           }}>
-            <h2 style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '1.25rem', fontWeight: 600 }}>
+            <style>{`
+              @keyframes modalSlideIn {
+                from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+              }
+            `}</style>
+            <h2 style={{ marginTop: 0, marginBottom: '1.75rem', fontSize: '1.375rem', fontWeight: 600, color: '#111827', letterSpacing: '-0.01em' }}>
               {editingTeacher ? 'Редагувати викладача' : 'Новий викладач'}
             </h2>
             
             <form onSubmit={handleSubmit}>
+              {/* Photo Upload */}
+              <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                {formData.photo ? (
+                  <>
+                    <div style={{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden', border: '3px solid #e5e7eb', flexShrink: 0, boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+                      <img src={formData.photo} alt="Teacher" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>
+                        Змінити
+                      </button>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={removePhoto}>
+                        Видалити
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                      <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    Завантажити фото
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  style={{ display: 'none' }}
+                />
+              </div>
+
+              {/* Name Fields */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: '500', fontSize: '0.875rem', color: '#374151' }}>Прізвище *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={formData.last_name}
+                    onChange={(e) => setFormData({...formData, last_name: e.target.value})}
+                    className="form-input"
+                    placeholder="Прізвище"
+                    style={{ borderColor: '#d1d5db', padding: '0.625rem 0.875rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: '500', fontSize: '0.875rem', color: '#374151' }}>Ім'я *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={formData.first_name}
+                    onChange={(e) => setFormData({...formData, first_name: e.target.value})}
+                    className="form-input"
+                    placeholder="Ім'я"
+                    style={{ borderColor: '#d1d5db', padding: '0.625rem 0.875rem' }}
+                  />
+                </div>
+              </div>
+
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>Ім'я *</label>
+                <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: '500', fontSize: '0.875rem', color: '#374151' }}>По батькові</label>
                 <input 
                   type="text" 
-                  required 
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  value={formData.patronymic}
+                  onChange={(e) => setFormData({...formData, patronymic: e.target.value})}
                   className="form-input"
-                  style={{ borderColor: '#d1d5db' }}
+                  placeholder="По батькові"
+                  style={{ borderColor: '#d1d5db', padding: '0.625rem 0.875rem' }}
                 />
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>Email *</label>
+                <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: '500', fontSize: '0.875rem', color: '#374151' }}>Email *</label>
                 <input 
                   type="email" 
                   required 
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   className="form-input"
-                  style={{ borderColor: '#d1d5db' }}
+                  placeholder="email@example.com"
+                  style={{ borderColor: '#d1d5db', padding: '0.625rem 0.875rem' }}
                 />
               </div>
 
+              {/* Phone with +380 prefix */}
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
-                  Пароль {!editingTeacher && '*'}
-                </label>
-                <input 
-                  type="password" 
-                  required={!editingTeacher}
-                  minLength={6} 
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className="form-input"
-                  style={{ borderColor: '#d1d5db' }}
-                  placeholder={editingTeacher ? 'Залиште порожнім, щоб не змінювати' : ''}
-                />
+                <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: '500', fontSize: '0.875rem', color: '#374151' }}>Телефон</label>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  border: '1px solid #d1d5db', 
+                  borderRadius: '0.375rem',
+                  backgroundColor: '#fff',
+                  overflow: 'hidden',
+                  transition: 'border-color 0.15s ease, box-shadow 0.15s ease'
+                }}>
+                  <span style={{ 
+                    padding: '0.625rem 0.75rem', 
+                    backgroundColor: '#f3f4f6', 
+                    color: '#374151', 
+                    fontWeight: '500',
+                    fontSize: '0.875rem',
+                    borderRight: '1px solid #d1d5db'
+                  }}>+380</span>
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    className="form-input"
+                    placeholder="00 000 00 00"
+                    maxLength={9}
+                    style={{ 
+                      flex: 1, 
+                      border: 'none',
+                      outline: 'none',
+                      padding: '0.625rem 0.75rem',
+                      fontSize: '1rem',
+                      letterSpacing: '0.05em'
+                    }}
+                  />
+                </div>
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>Телефон</label>
-                <input 
-                  type="tel" 
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  className="form-input"
-                  style={{ borderColor: '#d1d5db' }}
-                  placeholder="+380..."
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>Telegram ID</label>
+                <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: '500', fontSize: '0.875rem', color: '#374151' }}>Telegram</label>
                 <input 
                   type="text" 
                   value={formData.telegram_id}
                   onChange={(e) => setFormData({...formData, telegram_id: e.target.value})}
                   className="form-input"
-                  style={{ borderColor: '#d1d5db' }}
                   placeholder="username (без @)"
+                  style={{ borderColor: '#d1d5db', padding: '0.625rem 0.875rem' }}
                 />
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>Примечания</label>
+              <div style={{ marginBottom: '1.75rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: '500', fontSize: '0.875rem', color: '#374151' }}>Примітка</label>
                 <textarea 
                   value={formData.notes} 
                   rows={3}
                   onChange={(e) => setFormData({...formData, notes: e.target.value})}
                   className="form-input"
-                  style={{ borderColor: '#d1d5db', resize: 'vertical' }}
+                  style={{ borderColor: '#d1d5db', resize: 'vertical', padding: '0.625rem 0.875rem' }}
+                  placeholder="Додаткова інформація про викладача..."
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
                 <button 
                   type="button" 
                   onClick={() => setShowModal(false)}
                   className="btn btn-secondary"
+                  style={{ padding: '0.625rem 1.25rem' }}
                 >
                   Скасувати
                 </button>
                 <button 
                   type="submit"
                   className="btn btn-primary"
+                  style={{ padding: '0.625rem 1.5rem' }}
                 >
                   {editingTeacher ? 'Зберегти' : 'Створити'}
                 </button>
@@ -1013,15 +1157,131 @@ export default function TeachersPage() {
         }}>
           <div style={{
             background: 'white', padding: '1.5rem', borderRadius: '0.75rem',
-            width: '90%', maxWidth: '400px'
+            width: '90%', maxWidth: '520px'
           }}>
             <h2 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.25rem', fontWeight: 600 }}>
-              Видалити викладача?
+              {deleteMode === 'permanent' ? 'Підтвердження остаточного видалення' : 'Підтвердження деактивації'}
             </h2>
-            <p style={{ marginBottom: '1.5rem', color: '#6b7280' }}>
-              Ви збираєтеся видалити викладача <strong>{teacherToDelete?.name}</strong>. 
-              Цю дію неможливо скасувати.
-            </p>
+            
+            {/* Mode selector */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <button
+                type="button"
+                onClick={() => setDeleteMode('deactivate')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem 1rem',
+                  border: deleteMode === 'deactivate' ? '2px solid #4CAF50' : '1px solid #d1d5db',
+                  background: deleteMode === 'deactivate' ? '#f0fdf4' : 'white',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontWeight: deleteMode === 'deactivate' ? 600 : 400
+                }}
+              >
+                Деактивувати
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteMode('permanent')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem 1rem',
+                  border: deleteMode === 'permanent' ? '2px solid #ef4444' : '1px solid #d1d5db',
+                  background: deleteMode === 'permanent' ? '#fef2f2' : 'white',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontWeight: deleteMode === 'permanent' ? 600 : 400
+                }}
+              >
+                Видалити остаточно
+              </button>
+            </div>
+            
+            {deleteMode === 'permanent' ? (
+              <>
+                <p style={{ marginBottom: '1rem', color: '#6b7280' }}>
+                  Ви збираєтеся остаточно видалити викладача <strong>{teacherToDelete?.name}</strong>. 
+                  Ця дія незворотня.
+                </p>
+                
+                {/* Warning about groups */}
+                {teacherGroupsWarning.length > 0 && (
+                  <div style={{
+                    backgroundColor: '#fef3c7',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '0.5rem',
+                    padding: '1rem',
+                    marginBottom: '1rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#92400e', fontWeight: 600 }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      Викладач веде активні групи
+                    </div>
+                    <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#92400e' }}>
+                      При остаточному видаленні викладач буде автоматично відключений від груп:
+                    </p>
+                    <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: '#92400e' }}>
+                      {teacherGroupsWarning.map(group => (
+                        <li key={group.id}>
+                          <strong>{group.title}</strong> ({group.course_title})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                <p style={{ marginBottom: '1rem', color: '#dc2626', fontSize: '0.875rem' }}>
+                  Увага! Всі дані про викладача будуть видалені остаточно.
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ marginBottom: '1rem', color: '#6b7280' }}>
+                  Ви збираєтеся деактивувати викладача <strong>{teacherToDelete?.name}</strong>. 
+                  Викладач не буде видалений остаточно, а лише деактивований.
+                </p>
+                
+                {/* Warning about groups */}
+                {teacherGroupsWarning.length > 0 && (
+                  <div style={{
+                    backgroundColor: '#fef3c7',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '0.5rem',
+                    padding: '1rem',
+                    marginBottom: '1rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#92400e', fontWeight: 600 }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      Викладач веде активні групи
+                    </div>
+                    <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.875rem', color: '#92400e' }}>
+                      Перед деактивацією викладача потрібно призначити іншого викладача для наступних груп:
+                    </p>
+                    <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: '#92400e' }}>
+                      {teacherGroupsWarning.map(group => (
+                        <li key={group.id}>
+                          <strong>{group.title}</strong> ({group.course_title})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {teacherGroupsWarning.length === 0 && (
+                  <p style={{ marginBottom: '1rem', color: '#6b7280', fontSize: '0.875rem' }}>
+                    Викладач не веде жодної активної групи і може бути деактивований.
+                  </p>
+                )}
+              </>
+            )}
             
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', fontSize: '0.875rem' }}>
@@ -1034,6 +1294,7 @@ export default function TeachersPage() {
                 className="form-input"
                 style={{ borderColor: deleteError ? '#ef4444' : '#d1d5db' }}
                 placeholder="Ваш пароль"
+                disabled={deleteMode === 'deactivate' && teacherGroupsWarning.length > 0}
               />
               {deleteError && (
                 <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '0.25rem' }}>{deleteError}</p>
@@ -1043,7 +1304,7 @@ export default function TeachersPage() {
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button 
                 type="button" 
-                onClick={() => setShowDeleteModal(false)}
+                onClick={handleDeleteCancel}
                 className="btn btn-secondary"
                 disabled={deleting}
               >
@@ -1052,10 +1313,10 @@ export default function TeachersPage() {
               <button 
                 type="button"
                 onClick={confirmDelete}
-                className="btn btn-danger"
-                disabled={deleting}
+                className={deleteMode === 'permanent' ? 'btn btn-danger' : 'btn btn-danger'}
+                disabled={deleting || (deleteMode === 'deactivate' && teacherGroupsWarning.length > 0) || !deletePassword.trim()}
               >
-                {deleting ? 'Видалення...' : 'Видалити'}
+                {deleting ? 'Видалення...' : deleteMode === 'permanent' ? 'Видалити остаточно' : (teacherGroupsWarning.length > 0 ? 'Спочатку призначте викладача' : 'Деактивувати')}
               </button>
             </div>
           </div>
@@ -1079,220 +1340,7 @@ export default function TeachersPage() {
           `}</style>
           {toast.message}
         </div>
-      )}
-
-      {/* Group Modals - Render all open modals */}
-      {Object.entries(openGroupModals).map(([groupId, isOpen]) => {
-        const id = parseInt(groupId);
-        if (!isOpen) return null;
-        const groupResponse = groupModalData[id];
-        const groupData = groupResponse?.group;
-        const studentsData = groupResponse?.students;
-        const groupInfo = teachers
-          .flatMap(t => t.groups || [])
-          .find(g => g.id === id);
-        const isLoading = loadingGroupData[id];
-
-        return (
-          <DraggableModal
-            key={id}
-            id={`group-modal-${id}`}
-            isOpen={isOpen}
-            onClose={() => handleCloseGroupModal(id)}
-            title={groupInfo?.title || groupData?.title || 'Група'}
-            groupUrl={`/groups/${id}`}
-            initialWidth={520}
-            initialHeight={480}
-          >
-            {isLoading ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-                <div style={{ color: '#6b7280' }}>Завантаження...</div>
-              </div>
-            ) : groupData ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {/* Status Badge */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span className={`badge ${groupData.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
-                    {groupData.is_active === 1 ? 'Активна' : 'Неактивна'}
-                  </span>
-                  <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
-                    {groupData.status === 'active' ? 'Активна' : groupData.status === 'completed' ? 'Завершена' : 'Архівна'}
-                  </span>
-                </div>
-
-                {/* Course */}
-                {groupData.course_title && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Курс</span>
-                    <span style={{ fontSize: '0.9375rem', color: '#1f2937' }}>{groupData.course_title}</span>
-                  </div>
-                )}
-
-                {/* Schedule */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Розклад</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      backgroundColor: '#f0f9ff',
-                      borderRadius: '0.5rem',
-                      border: '1px solid #bae6fd',
-                    }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                        <line x1="16" y1="2" x2="16" y2="6" />
-                        <line x1="8" y1="2" x2="8" y2="6" />
-                        <line x1="3" y1="10" x2="21" y2="10" />
-                      </svg>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#0369a1' }}>
-                        {getDayName(groupData.weekly_day)}
-                      </span>
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      backgroundColor: '#fef3c7',
-                      borderRadius: '0.5rem',
-                      border: '1px solid #fde68a',
-                    }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <polyline points="12 6 12 12 16 14" />
-                      </svg>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#b45309' }}>
-                        {formatTime(groupData.start_time)}
-                        {groupData.end_time && ` - ${formatTime(groupData.end_time)}`}
-                      </span>
-                    </div>
-                    {groupData.room && (
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.5rem 0.75rem',
-                        backgroundColor: '#f3e8ff',
-                        borderRadius: '0.5rem',
-                        border: '1px solid #d8b4fe',
-                      }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2">
-                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                          <circle cx="12" cy="10" r="3" />
-                        </svg>
-                        <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#7e22ce' }}>
-                          {groupData.room}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Students Count */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Студенти</span>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.625rem 0.875rem',
-                    backgroundColor: '#ecfdf5',
-                    borderRadius: '0.5rem',
-                    border: '1px solid #a7f3d0',
-                  }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#047857' }}>
-                      {studentsData?.length || 0} студентів
-                    </span>
-                  </div>
-                </div>
-
-                {/* Students List */}
-                {studentsData && studentsData.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginTop: '0.5rem' }}>
-                    <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {studentsData.map((student: { id: number; public_id: string; full_name: string; phone: string | null; join_date: string; student_group_id: number; photo: string | null }) => (
-                        <div
-                          key={student.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.75rem',
-                            padding: '0.625rem',
-                            backgroundColor: 'white',
-                            borderRadius: '0.5rem',
-                            border: '1px solid #e5e7eb',
-                            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-                          }}
-                        >
-                          {/* Avatar */}
-                          <div style={{
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            overflow: 'hidden',
-                            backgroundColor: '#dbeafe',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                            border: '2px solid #bfdbfe',
-                          }}>
-                            {student.photo ? (
-                              <img 
-                                src={student.photo} 
-                                alt={student.full_name}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                              />
-                            ) : (
-                              <span style={{
-                                fontSize: '0.8125rem',
-                                fontWeight: 600,
-                                color: '#2563eb',
-                              }}>
-                                {student.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: '500', color: '#111827' }}>{student.full_name}</p>
-                            <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.8125rem', color: '#6b7280' }}>{student.phone || 'Телефон не вказано'}</p>
-                            {student.join_date ? (
-                              <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: '#9ca3af' }}>Доданий: {formatDateKyiv(student.join_date)}</p>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {groupData.notes && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Нотатки</span>
-                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#4b5563', lineHeight: 1.5 }}>
-                      {groupData.notes}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-                <div style={{ color: '#ef4444' }}>Не вдалося завантажити дані</div>
-              </div>
-            )}
-          </DraggableModal>
-        );
-      })}
+      )};
     </Layout>
   );
 }

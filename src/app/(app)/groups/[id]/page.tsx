@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Layout from '@/components/Layout';
 import { uk } from '@/i18n/uk';
 import { formatShortDateKyiv, formatDateKyiv } from '@/lib/date-utils';
+import { useStudentModals } from '@/components/StudentModalsContext';
 
 interface User {
   id: number;
@@ -78,6 +79,9 @@ export default function GroupDetailsPage() {
   const params = useParams();
   const groupId = params.id as string;
   
+  // Student modals
+  const { openStudentModal } = useStudentModals();
+  
   const [user, setUser] = useState<User | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -110,6 +114,47 @@ export default function GroupDetailsPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [savingGroup, setSavingGroup] = useState(false);
+
+  // Константа для ключа localStorage
+  const STORAGE_KEY = 'itrobot-group-modals';
+
+  // При відкритті сторінки групи - автоматично закрити модальне вікно для цієї групи
+  useEffect(() => {
+    if (groupId) {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Перевіряємо формат - може бути масив (GroupModalsManager) або об'єкт (GroupModalsContext)
+          let modalForGroup = null;
+          
+          if (Array.isArray(parsed)) {
+            // Формат GroupModalsManager: масив об'єктів
+            modalForGroup = parsed.find((m: { id: number }) => m.id === Number(groupId));
+          } else if (typeof parsed === 'object') {
+            // Формат GroupModalsContext: об'єкт з ключами groupId
+            modalForGroup = parsed[groupId];
+          }
+          
+          if (modalForGroup) {
+            if (Array.isArray(parsed)) {
+              // Видаляємо модальне вікно з масиву
+              const newModals = parsed.filter((m: { id: number }) => m.id !== Number(groupId));
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newModals));
+            } else {
+              // Видаляємо модальне вікно з об'єкта
+              const newModals = { ...parsed };
+              delete newModals[groupId];
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(newModals));
+            }
+            console.log(`Закрито модальне вікно групи ${groupId} (відкрите в іншому вікні)`);
+          }
+        }
+      } catch (e) {
+        console.error('Error checking modal state:', e);
+      }
+    }
+  }, [groupId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -479,7 +524,9 @@ export default function GroupDetailsPage() {
                         padding: '0.875rem 1.25rem',
                         borderBottom: '1px solid var(--gray-100)',
                         transition: 'background 0.15s',
+                        cursor: 'pointer',
                       }}
+                      onClick={() => openStudentModal(student.id, student.full_name)}
                       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--gray-50)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
