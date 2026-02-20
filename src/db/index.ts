@@ -287,6 +287,24 @@ function createAllTables(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_error_logs_created ON error_logs(created_at);
+
+    -- Group history table (audit log for groups)
+    CREATE TABLE IF NOT EXISTS group_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL,
+      action_type TEXT NOT NULL,
+      action_description TEXT NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      user_id INTEGER NOT NULL,
+      user_name TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_group_history_group ON group_history(group_id);
+    CREATE INDEX IF NOT EXISTS idx_group_history_created ON group_history(created_at);
   `;
   
   database.exec(createTablesSQL);

@@ -22,6 +22,7 @@ interface LayoutProps {
 
 const menuItems = [
   { href: '/dashboard', labelKey: 'nav.dashboard', icon: 'home' },
+  { href: '/schedule', labelKey: 'nav.schedule', icon: 'calendar' },
   { href: '/courses', labelKey: 'nav.courses', icon: 'book' },
   { href: '/groups', labelKey: 'nav.groups', icon: 'users' },
   { href: '/students', labelKey: 'nav.students', icon: 'user' },

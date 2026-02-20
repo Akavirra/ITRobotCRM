@@ -6,6 +6,8 @@ import Layout from '@/components/Layout';
 import { uk } from '@/i18n/uk';
 import { formatShortDateKyiv, formatDateKyiv } from '@/lib/date-utils';
 import { useStudentModals } from '@/components/StudentModalsContext';
+import { useLessonModals } from '@/components/LessonModalsContext';
+import GroupHistoryPanel from '@/components/GroupHistoryPanel';
 
 interface User {
   id: number;
@@ -81,12 +83,15 @@ export default function GroupDetailsPage() {
   
   // Student modals
   const { openStudentModal } = useStudentModals();
+  const { openLessonModal } = useLessonModals();
   
   const [user, setUser] = useState<User | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
+  const [studentsExpanded, setStudentsExpanded] = useState(true);
+  const [lessonsExpanded, setLessonsExpanded] = useState(true);
   
   // Modal states
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -489,7 +494,7 @@ export default function GroupDetailsPage() {
             
             {/* Students Card */}
             <div className="card">
-              <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '1.25rem', borderBottom: studentsExpanded ? '1px solid var(--gray-200)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setStudentsExpanded(!studentsExpanded)}>
                 <h2 style={{ fontSize: '1.125rem', fontWeight: '600', margin: 0, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -499,20 +504,34 @@ export default function GroupDetailsPage() {
                   </svg>
                   Склад групи
                 </h2>
-                {isAdmin && (
-                  <button
-                    onClick={() => setShowAddStudentModal(true)}
-                    className="btn btn-primary"
-                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {isAdmin && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowAddStudentModal(true); }}
+                      className="btn btn-primary"
+                      style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem', marginRight: '0.25rem' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.25rem' }}>
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      Додати
+                    </button>
+                  )}
+                  <svg 
+                    width="16" 
+                    height="16" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="var(--gray-400)" 
+                    strokeWidth="2"
+                    style={{ transition: 'transform 0.2s', transform: studentsExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.375rem' }}>
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                    Додати
-                  </button>
-                )}
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
               </div>
+              {studentsExpanded && (
               <div style={{ padding: '0.5rem 0' }}>
                 {students.length > 0 ? (
                   students.map((student) => (
@@ -611,11 +630,12 @@ export default function GroupDetailsPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             {/* Lessons Card */}
             <div className="card">
-              <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '1.25rem', borderBottom: lessonsExpanded ? '1px solid var(--gray-200)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setLessonsExpanded(!lessonsExpanded)}>
                 <h2 style={{ fontSize: '1.125rem', fontWeight: '600', margin: 0, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2">
                     <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -625,20 +645,28 @@ export default function GroupDetailsPage() {
                   </svg>
                   Заняття
                 </h2>
-                <button
-                  onClick={() => setShowLessonsModal(true)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--primary)',
-                    cursor: 'pointer',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                  }}
-                >
-                  Графік уроків →
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowLessonsModal(true); }}
+                    className="btn btn-primary"
+                    style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem', marginRight: '0.25rem' }}
+                  >
+                    Усі заняття
+                  </button>
+                  <svg 
+                    width="16" 
+                    height="16" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="var(--gray-400)" 
+                    strokeWidth="2"
+                    style={{ transition: 'transform 0.2s', transform: lessonsExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
               </div>
+              {lessonsExpanded && (
               <div style={{ padding: '0.5rem 0' }}>
                 {recentLessons.length > 0 ? (
                   <>
@@ -661,7 +689,23 @@ export default function GroupDetailsPage() {
                           padding: '0.875rem 1.25rem',
                           borderBottom: '1px solid var(--gray-100)',
                           alignItems: 'center',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s',
                         }}
+                        onClick={() => openLessonModal(lesson.id, `Заняття #${lesson.id}`, {
+                          id: lesson.id,
+                          groupId: group?.id || 0,
+                          groupTitle: group?.title || '',
+                          courseTitle: group?.course_title || '',
+                          teacherId: group?.teacher_id || 0,
+                          teacherName: group?.teacher_name || '',
+                          startTime: lesson.start_datetime ? lesson.start_datetime.split(' ')[1].substring(0, 5) : '',
+                          endTime: lesson.end_datetime ? lesson.end_datetime.split(' ')[1].substring(0, 5) : '',
+                          status: lesson.status,
+                          topic: lesson.topic,
+                        })}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--gray-50)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                       >
                         <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--gray-900)' }}>
                           {formatDate(lesson.lesson_date)}
@@ -683,6 +727,7 @@ export default function GroupDetailsPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
 
           </div>
@@ -828,6 +873,11 @@ export default function GroupDetailsPage() {
                   </div>
                 </div>
               )}
+
+              {/* Group History */}
+              <div style={{ marginTop: '1rem' }}>
+                <GroupHistoryPanel groupId={groupId} />
+              </div>
 
             </div>
           </div>
@@ -1074,41 +1124,97 @@ export default function GroupDetailsPage() {
             <div className="modal-body" style={{ padding: 0 }}>
               {allLessons.length > 0 ? (
                 <>
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: '100px 100px 1fr', 
-                    padding: '0.75rem 1.25rem',
-                    borderBottom: '1px solid var(--gray-200)',
-                    background: 'var(--gray-50)',
-                  }}>
-                    <span style={{ fontSize: '0.6875rem', fontWeight: '600', textTransform: 'uppercase', color: 'var(--gray-400)', letterSpacing: '0.05em' }}>Дата</span>
-                    <span style={{ fontSize: '0.6875rem', fontWeight: '600', textTransform: 'uppercase', color: 'var(--gray-400)', letterSpacing: '0.05em' }}>Статус</span>
-                    <span style={{ fontSize: '0.6875rem', fontWeight: '600', textTransform: 'uppercase', color: 'var(--gray-400)', letterSpacing: '0.05em' }}>Тема</span>
-                  </div>
-                  {allLessons.map((lesson) => (
-                    <div 
-                      key={lesson.id}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '100px 100px 1fr',
-                        padding: '0.875rem 1.25rem',
-                        borderBottom: '1px solid var(--gray-100)',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--gray-900)' }}>
-                        {formatDate(lesson.lesson_date)}
-                      </span>
-                      <span>
-                        <span className={`badge ${getStatusBadgeClass(lesson.status)}`}>
-                          {getLessonStatusLabel(lesson.status)}
-                        </span>
-                      </span>
-                      <span style={{ fontSize: '0.875rem', color: lesson.topic ? 'var(--gray-700)' : 'var(--gray-400)', fontStyle: lesson.topic ? 'normal' : 'italic' }}>
-                        {lesson.topic || 'Тема не вказана'}
-                      </span>
-                    </div>
-                  ))}
+                  {(() => {
+                    const monthGroups: { [key: string]: typeof allLessons } = {};
+                    const monthNames = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень', 'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
+                    
+                    allLessons.forEach((lesson) => {
+                      const date = new Date(lesson.lesson_date);
+                      const key = `${date.getFullYear()}-${date.getMonth()}`;
+                      if (!monthGroups[key]) {
+                        monthGroups[key] = [];
+                      }
+                      monthGroups[key].push(lesson);
+                    });
+                    
+                    const sortedKeys = Object.keys(monthGroups).sort((a, b) => {
+                      const [yearA, monthA] = a.split('-').map(Number);
+                      const [yearB, monthB] = b.split('-').map(Number);
+                      return yearA - yearB || monthA - monthB;
+                    });
+                    
+                    return sortedKeys.map((key) => {
+                      const [year, month] = key.split('-').map(Number);
+                      const monthLabel = `${monthNames[month]} ${year}`;
+                      const lessonsInMonth = monthGroups[key];
+                      
+                      return (
+                        <div key={key}>
+                          <div style={{ 
+                            padding: '0.75rem 1.25rem', 
+                            background: 'var(--gray-100)', 
+                            borderBottom: '1px solid var(--gray-200)',
+                            fontSize: '0.8125rem',
+                            fontWeight: '600',
+                            color: 'var(--gray-700)',
+                          }}>
+                            {monthLabel}
+                          </div>
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '100px 100px 1fr', 
+                            padding: '0.75rem 1.25rem',
+                            borderBottom: '1px solid var(--gray-100)',
+                            background: 'var(--gray-50)',
+                          }}>
+                            <span style={{ fontSize: '0.6875rem', fontWeight: '600', textTransform: 'uppercase', color: 'var(--gray-400)', letterSpacing: '0.05em' }}>Дата</span>
+                            <span style={{ fontSize: '0.6875rem', fontWeight: '600', textTransform: 'uppercase', color: 'var(--gray-400)', letterSpacing: '0.05em' }}>Статус</span>
+                            <span style={{ fontSize: '0.6875rem', fontWeight: '600', textTransform: 'uppercase', color: 'var(--gray-400)', letterSpacing: '0.05em' }}>Тема</span>
+                          </div>
+                          {lessonsInMonth.map((lesson) => (
+                            <div 
+                              key={lesson.id}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '100px 100px 1fr',
+                                padding: '0.875rem 1.25rem',
+                                borderBottom: '1px solid var(--gray-100)',
+                                alignItems: 'center',
+                                cursor: 'pointer',
+                                transition: 'background 0.15s',
+                              }}
+                              onClick={() => openLessonModal(lesson.id, `Заняття #${lesson.id}`, {
+                                id: lesson.id,
+                                groupId: group?.id || 0,
+                                groupTitle: group?.title || '',
+                                courseTitle: group?.course_title || '',
+                                teacherId: group?.teacher_id || 0,
+                                teacherName: group?.teacher_name || '',
+                                startTime: lesson.start_datetime ? lesson.start_datetime.split(' ')[1].substring(0, 5) : '',
+                                endTime: lesson.end_datetime ? lesson.end_datetime.split(' ')[1].substring(0, 5) : '',
+                                status: lesson.status,
+                                topic: lesson.topic,
+                              })}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--gray-50)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--gray-900)' }}>
+                                {formatDate(lesson.lesson_date)}
+                              </span>
+                              <span>
+                                <span className={`badge ${getStatusBadgeClass(lesson.status)}`}>
+                                  {getLessonStatusLabel(lesson.status)}
+                                </span>
+                              </span>
+                              <span style={{ fontSize: '0.875rem', color: lesson.topic ? 'var(--gray-700)' : 'var(--gray-400)', fontStyle: lesson.topic ? 'normal' : 'italic' }}>
+                                {lesson.topic || 'Тема не вказана'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    });
+                  })()}
                 </>
               ) : (
                 <div style={{ padding: '3rem 1.25rem', textAlign: 'center', color: 'var(--gray-400)' }}>

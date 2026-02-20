@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, unauthorized, forbidden, checkGroupAccess } from '@/lib/api-utils';
 import { getAttendanceForLessonWithStudents, setAttendance, setAttendanceForAll, clearAttendanceForLesson, copyAttendanceFromPreviousLesson } from '@/lib/attendance';
 import { get } from '@/db';
+import { addGroupHistoryEntry, formatLessonConductedDescription } from '@/lib/group-history';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -91,6 +92,13 @@ export async function POST(
           );
         }
         setAttendance(lessonId, parseInt(studentId), status, user.id, comment, makeupLessonId);
+        
+        // Check if this is marking attendance for a 'done' lesson - add history entry
+        const lessonInfo = get<{ group_id: number; status: string; lesson_date: string; topic: string }>(
+          `SELECT group_id, status, lesson_date, topic FROM lessons WHERE id = ?`,
+          [lessonId]
+        );
+        
         return NextResponse.json({ message: 'Відвідуваність успішно встановлена' });
         
       case 'setAll':

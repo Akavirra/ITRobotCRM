@@ -3,6 +3,7 @@ export const uk = {
   // Navigation
   nav: {
     dashboard: 'Головна',
+    schedule: 'Розклад',
     courses: 'Курси',
     groups: 'Групи',
     students: 'Учні',

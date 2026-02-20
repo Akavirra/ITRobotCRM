@@ -20,6 +20,7 @@ import {
 import { getCourseById } from '@/lib/courses';
 import { verifyPassword } from '@/lib/auth';
 import { get } from '@/db';
+import { addGroupHistoryEntry, formatFieldEditedDescription, formatTeacherChangedDescription, formatStatusChangedDescription } from '@/lib/group-history';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -138,7 +139,19 @@ export async function PUT(
     
     // If only status is being updated, handle it separately
     if (status && !course_id && !teacher_id && !weekly_day && !start_time) {
+      const oldStatus = existingGroup.status;
       updateGroupStatus(groupId, status);
+      
+      // Add history entry for status change
+      addGroupHistoryEntry(
+        groupId,
+        'status_changed',
+        formatStatusChangedDescription(oldStatus, status),
+        user.id,
+        user.name,
+        oldStatus,
+        status
+      );
       return NextResponse.json({ 
         message: 'Статус групи успішно оновлено',
         status,
@@ -235,6 +248,74 @@ export async function PUT(
     
     // Get updated group with details
     const updatedGroup = getGroupWithDetailsById(groupId);
+    
+    // Add history entry for group edit - check for teacher change and other fields
+    const changes: string[] = [];
+    
+    // Check if teacher changed
+    if (existingGroup.teacher_id !== parseInt(teacher_id)) {
+      const oldTeacher = get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [existingGroup.teacher_id]);
+      const newTeacher = get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [parseInt(teacher_id)]);
+      if (oldTeacher && newTeacher) {
+        addGroupHistoryEntry(
+          groupId,
+          'teacher_changed',
+          formatTeacherChangedDescription(oldTeacher.name, newTeacher.name),
+          user.id,
+          user.name,
+          String(existingGroup.teacher_id),
+          teacher_id
+        );
+      }
+    }
+    
+    // Check other field changes
+    if (existingGroup.course_id !== parseInt(course_id)) {
+      const oldCourse = get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [existingGroup.course_id]);
+      const newCourse = get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [parseInt(course_id)]);
+      if (oldCourse && newCourse) {
+        addGroupHistoryEntry(
+          groupId,
+          'edited',
+          formatFieldEditedDescription('course_id', oldCourse.title, newCourse.title),
+          user.id,
+          user.name
+        );
+      }
+    }
+    
+    if (existingGroup.start_time !== start_time) {
+      addGroupHistoryEntry(
+        groupId,
+        'edited',
+        formatFieldEditedDescription('start_time', existingGroup.start_time, start_time),
+        user.id,
+        user.name
+      );
+    }
+    
+    if (existingGroup.weekly_day !== dayNum) {
+      const dayNames = ['', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'];
+      addGroupHistoryEntry(
+        groupId,
+        'edited',
+        formatFieldEditedDescription('weekly_day', dayNames[existingGroup.weekly_day], dayNames[dayNum]),
+        user.id,
+        user.name
+      );
+    }
+    
+    if (status && existingGroup.status !== status) {
+      addGroupHistoryEntry(
+        groupId,
+        'status_changed',
+        formatStatusChangedDescription(existingGroup.status, status),
+        user.id,
+        user.name,
+        existingGroup.status,
+        status
+      );
+    }
     
     return NextResponse.json({ 
       message: 'Групу успішно оновлено',

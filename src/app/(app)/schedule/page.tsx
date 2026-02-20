@@ -1,0 +1,587 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Layout from '@/components/Layout';
+import { useLessonModals } from '@/components/LessonModalsContext';
+import { format, addWeeks, subWeeks, startOfWeek, addDays, parseISO, startOfMonth, endOfMonth, eachWeekOfInterval } from 'date-fns';
+import { uk } from 'date-fns/locale';
+import { ChevronLeft, ChevronRight, Calendar, Clock, User, BookOpen, Check, X, RefreshCw } from 'lucide-react';
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: 'admin' | 'teacher';
+}
+
+interface Lesson {
+  id: number;
+  groupId: number;
+  groupTitle: string;
+  courseTitle: string;
+  teacherId: number;
+  teacherName: string;
+  startTime: string;
+  endTime: string;
+  status: 'scheduled' | 'done' | 'canceled';
+  topic: string | null;
+}
+
+interface DaySchedule {
+  date: string;
+  dayOfWeek: number;
+  dayName: string;
+  lessons: Lesson[];
+}
+
+interface ScheduleResponse {
+  weekStart: string;
+  weekEnd: string;
+  days: DaySchedule[];
+  totalLessons: number;
+}
+
+export default function SchedulePage() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [schedule, setSchedule] = useState<ScheduleResponse | null>(null);
+  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(
+    startOfWeek(new Date(), { weekStartsOn: 1, locale: uk })
+  );
+
+  // Filters
+  const [groupFilter, setGroupFilter] = useState<string>('');
+  const [teacherFilter, setTeacherFilter] = useState<string>('');
+
+  // Use global lesson modals instead of local state
+  const { openLessonModal } = useLessonModals();
+
+  // Generate modal state
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [weeksAhead, setWeeksAhead] = useState(8);
+
+  const fetchSchedule = useCallback(async () => {
+    const weekStartStr = format(currentWeekStart, 'yyyy-MM-dd');
+    const weekEndStr = format(addDays(currentWeekStart, 6), 'yyyy-MM-dd');
+    
+    let url = `/api/schedule?startDate=${weekStartStr}&endDate=${weekEndStr}`;
+    if (groupFilter) url += `&groupId=${groupFilter}`;
+    if (teacherFilter) url += `&teacherId=${teacherFilter}`;
+    
+    const res = await fetch(url);
+    const data = await res.json();
+    setSchedule(data);
+  }, [currentWeekStart, groupFilter, teacherFilter]);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const authRes = await fetch('/api/auth/me');
+      if (!authRes.ok) {
+        router.push('/login');
+        return;
+      }
+      const authData = await authRes.json();
+      setUser(authData.user);
+      setLoading(false);
+    };
+
+    checkAuth();
+  }, [router]);
+
+  useEffect(() => {
+    if (!loading && user) {
+      fetchSchedule();
+    }
+  }, [loading, user, fetchSchedule]);
+
+  const goToPreviousWeek = () => {
+    setCurrentWeekStart(prev => subWeeks(prev, 1));
+  };
+
+  const goToNextWeek = () => {
+    setCurrentWeekStart(prev => addWeeks(prev, 1));
+  };
+
+  const goToCurrentWeek = () => {
+    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1, locale: uk }));
+  };
+
+  const handleLessonClick = (lesson: Lesson) => {
+    openLessonModal(lesson.id, `Заняття #${lesson.id}`, {
+      id: lesson.id,
+      groupId: lesson.groupId,
+      groupTitle: lesson.groupTitle,
+      courseTitle: lesson.courseTitle,
+      teacherId: lesson.teacherId,
+      teacherName: lesson.teacherName,
+      startTime: lesson.startTime,
+      endTime: lesson.endTime,
+      status: lesson.status,
+      topic: lesson.topic,
+    });
+  };
+
+  const handleGenerateAll = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/schedule/generate-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weeksAhead }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Згенеровано ${data.totalGenerated} занять, пропущено ${data.totalSkipped}`);
+        fetchSchedule();
+        setShowGenerateModal(false);
+      }
+    } catch (error) {
+      console.error('Failed to generate lessons:', error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const getLessonStyle = (status: string) => {
+    switch (status) {
+      case 'done':
+        return {
+          background: '#f0fdf4',
+          borderColor: '#22c55e',
+          color: '#166534',
+        };
+      case 'canceled':
+        return {
+          background: '#fef2f2',
+          borderColor: '#ef4444',
+          color: '#991b1b',
+        };
+      default:
+        return {
+          background: '#eff6ff',
+          borderColor: '#3b82f6',
+          color: '#1e40af',
+        };
+    }
+  };
+
+  const getStatusBadgeStyle = (status: string) => {
+    switch (status) {
+      case 'done':
+        return { background: '#22c55e', color: 'white' };
+      case 'canceled':
+        return { background: '#ef4444', color: 'white' };
+      default:
+        return { background: '#3b82f6', color: 'white' };
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = parseISO(dateStr);
+    return format(date, 'd MMM', { locale: uk });
+  };
+
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#f9fafb',
+      }}>
+        <div style={{ color: '#6b7280', fontSize: '0.875rem' }}>Завантаження...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#f9fafb',
+      }}>
+        <div style={{ color: '#6b7280', fontSize: '0.875rem' }}>Перенаправлення...</div>
+      </div>
+    );
+  }
+
+  return (
+    <Layout user={user}>
+      {/* Page Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '1.5rem',
+        flexWrap: 'wrap',
+        gap: '1rem',
+      }}>
+        <h1 style={{ 
+          fontSize: '1.5rem', 
+          fontWeight: 600, 
+          margin: 0, 
+          color: '#111827',
+        }}>
+          Розклад занять
+        </h1>
+        
+        {(user?.role === 'admin' || user?.role === 'teacher') && (
+          <button
+            onClick={() => setShowGenerateModal(true)}
+            className="btn btn-primary"
+            style={{ gap: '0.5rem' }}
+          >
+            <RefreshCw size={14} />
+            Згенерувати
+          </button>
+        )}
+      </div>
+
+      {/* Week Navigator */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div className="card-body" style={{ padding: '1rem 1.25rem' }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+          }}>
+            <button
+              onClick={goToPreviousWeek}
+              className="btn btn-secondary"
+              style={{ padding: '0.5rem 0.75rem', fontSize: '0.8125rem' }}
+            >
+              <ChevronLeft size={16} />
+              Попередній
+            </button>
+            
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#111827', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '0.25rem' }}>
+                {schedule?.weekStart && format(parseISO(schedule.weekStart), 'LLLL yyyy', { locale: uk })}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                {(() => {
+                  if (!schedule?.weekStart) return '';
+                  const monthStart = startOfMonth(parseISO(schedule.weekStart));
+                  const monthEnd = endOfMonth(parseISO(schedule.weekStart));
+                  const weeks = eachWeekOfInterval({ start: monthStart, end: monthEnd }, { weekStartsOn: 1 });
+                  return `${weeks.length} тижнів у місяці`;
+                })()}
+              </div>
+              <div style={{ fontSize: '1.125rem', fontWeight: 500, color: '#111827' }}>
+                {schedule?.weekStart && formatDate(schedule.weekStart)} — {schedule?.weekEnd && formatDate(schedule.weekEnd)}
+              </div>
+              <button
+                onClick={goToCurrentWeek}
+                style={{
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  color: '#3b82f6',
+                  background: '#eff6ff',
+                  border: '1px solid #dbeafe',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  padding: '0.375rem 0.75rem',
+                  marginTop: '0.5rem',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#dbeafe';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#eff6ff';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                Поточний тиждень
+              </button>
+            </div>
+            
+            <button
+              onClick={goToNextWeek}
+              className="btn btn-secondary"
+              style={{ padding: '0.5rem 0.75rem', fontSize: '0.8125rem' }}
+            >
+              Наступний
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Schedule Grid */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(7, 1fr)', 
+        gap: '0.75rem',
+      }} className="schedule-grid">
+        <style>{`
+          @media (max-width: 1200px) {
+            .schedule-grid {
+              grid-template-columns: repeat(4, 1fr) !important;
+            }
+          }
+          @media (max-width: 900px) {
+            .schedule-grid {
+              grid-template-columns: repeat(2, 1fr) !important;
+            }
+          }
+          @media (max-width: 600px) {
+            .schedule-grid {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}</style>
+        
+        {schedule?.days.map((day) => (
+          <div
+            key={day.date}
+            className="card"
+            style={{ 
+              minHeight: '200px',
+            }}
+          >
+            <div className="card-body" style={{ padding: '0.75rem' }}>
+              {/* Day Header */}
+              <div style={{ 
+                textAlign: 'center', 
+                marginBottom: '0.75rem',
+                paddingBottom: '0.5rem',
+                borderBottom: '1px solid #e5e7eb',
+              }}>
+                <div style={{ 
+                  fontSize: '0.8125rem', 
+                  fontWeight: 600, 
+                  color: '#6b7280', 
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}>
+                  {day.dayName}
+                </div>
+                <div style={{ 
+                  fontSize: '1.25rem', 
+                  fontWeight: 700, 
+                  color: '#111827',
+                  marginTop: '0.125rem',
+                }}>
+                  {format(parseISO(day.date), 'd')}
+                </div>
+                <div style={{ 
+                  fontSize: '0.875rem', 
+                  fontWeight: 600,
+                  color: '#3b82f6',
+                  marginTop: '0.25rem',
+                }}>
+                  {day.lessons.length} {day.lessons.length === 1 ? 'заняття' : 'занять'}
+                </div>
+              </div>
+
+              {/* Lessons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {day.lessons.map((lesson) => {
+                  const lessonStyle = getLessonStyle(lesson.status);
+                  return (
+                    <div
+                      key={lesson.id}
+                      onClick={() => handleLessonClick(lesson)}
+                      style={{
+                        padding: '0.625rem',
+                        borderRadius: '0.5rem',
+                        cursor: 'pointer',
+                        borderLeft: '3px solid',
+                        borderColor: lessonStyle.borderColor,
+                        background: lessonStyle.background,
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{ 
+                        fontSize: '0.875rem', 
+                        fontWeight: 700, 
+                        color: lessonStyle.borderColor,
+                        marginBottom: '0.25rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}>
+                        <Clock size={10} />
+                        {lesson.startTime} - {lesson.endTime}
+                      </div>
+                      <div style={{
+                        fontSize: '0.9375rem',
+                        fontWeight: 500,
+                        color: '#111827',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {lesson.groupTitle}
+                      </div>
+                      <div style={{
+                        fontSize: '0.875rem',
+                        color: '#6b7280',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        marginTop: '0.125rem',
+                      }}>
+                        <BookOpen size={9} />
+                        {lesson.courseTitle}
+                      </div>
+                      <div style={{
+                        fontSize: '0.8125rem',
+                        color: '#9ca3af',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        marginTop: '0.125rem',
+                      }}>
+                        <User size={9} />
+                        {lesson.teacherName}
+                      </div>
+                      {lesson.topic && (
+                        <div style={{
+                          fontSize: '0.75rem',
+                          color: '#6b7280',
+                          marginTop: '0.25rem',
+                          fontStyle: 'italic',
+                        }}>
+                          {lesson.topic}
+                        </div>
+                      )}
+                      <div style={{ 
+                        ...getStatusBadgeStyle(lesson.status),
+                        fontSize: '0.6875rem',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '0.25rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.125rem',
+                        marginTop: '0.375rem',
+                      }}>
+                        {lesson.status === 'done' && <Check size={8} />}
+                        {lesson.status === 'canceled' && <X size={8} />}
+                        {lesson.status === 'scheduled' && <Calendar size={8} />}
+                        {lesson.status === 'done' ? 'Проведено' : lesson.status === 'canceled' ? 'Скасовано' : 'Заплановано'}
+                      </div>
+                    </div>
+                  );
+                })}
+                
+                {day.lessons.length === 0 && (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    color: '#9ca3af', 
+                    fontSize: '0.875rem',
+                    padding: '1rem 0',
+                  }}>
+                    <Calendar size={20} style={{ opacity: 0.3, marginBottom: '0.25rem' }} />
+                    <div>Немає занять</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showGenerateModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: '1rem',
+          }}
+          onClick={() => setShowGenerateModal(false)}
+        >
+          <div 
+            className="card"
+            style={{ width: '100%', maxWidth: '380px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="card-body" style={{ padding: '1.25rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', color: '#111827' }}>
+                Генерація занять
+              </h3>
+              
+              <p style={{ marginBottom: '1rem', color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+                Це створить заняття для всіх активних груп на вказану кількість тижнів наперед.
+              </p>
+              
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 500, color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.375rem' }}>Кількість тижнів</div>
+                <input
+                  type="number"
+                  value={weeksAhead}
+                  onChange={(e) => setWeeksAhead(parseInt(e.target.value) || 8)}
+                  min={1}
+                  max={52}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.875rem',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleGenerateAll}
+                  disabled={generating}
+                  className="btn btn-primary"
+                  style={{ flex: 1, fontSize: '0.8125rem', padding: '0.625rem' }}
+                >
+                  <RefreshCw size={14} className={generating ? 'spin' : ''} />
+                  {generating ? 'Генерація...' : 'Згенерувати'}
+                </button>
+                
+                <button
+                  onClick={() => setShowGenerateModal(false)}
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.8125rem', padding: '0.625rem 1rem' }}
+                >
+                  Скасувати
+                </button>
+              </div>
+              
+              <style>{`
+                .spin {
+                  animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}</style>
+            </div>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
+}

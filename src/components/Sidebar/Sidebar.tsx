@@ -27,6 +27,7 @@ interface SidebarProps {
 
 const menuItems = [
   { href: '/dashboard', labelKey: 'nav.dashboard', icon: Home },
+  { href: '/schedule', labelKey: 'nav.schedule', icon: Calendar },
   { href: '/courses', labelKey: 'nav.courses', icon: BookOpen },
   { href: '/groups', labelKey: 'nav.groups', icon: Users },
   { href: '/students', labelKey: 'nav.students', icon: User },

@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser, unauthorized, forbidden, notFound, checkGroupAccess } from '@/lib/api-utils';
-import { cancelLesson, updateLessonTopic, markLessonDone } from '@/lib/lessons';
-import { get } from '@/db';
+import { getAuthUser, unauthorized, checkGroupAccess, forbidden } from '@/lib/api-utils';
+import { get, run } from '@/db';
+import { parseISO, setHours, setMinutes, format } from 'date-fns';
+import { addGroupHistoryEntry, formatLessonConductedDescription } from '@/lib/group-history';
 
-// Ukrainian error messages
-const ERROR_MESSAGES = {
-  invalidLessonId: 'Невірний ID заняття',
-  lessonNotFound: 'Заняття не знайдено',
-  updateFailed: 'Не вдалося оновити заняття',
-};
+interface Lesson {
+  id: number;
+  group_id: number;
+  lesson_date: string;
+  start_datetime: string;
+  end_datetime: string;
+  topic: string | null;
+  status: string;
+  created_by: number;
+}
 
-// GET /api/lessons/[id] - Get lesson by ID
+// GET /api/lessons/[id] - Get a specific lesson
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -24,13 +29,16 @@ export async function GET(
   const lessonId = parseInt(params.id, 10);
   
   if (isNaN(lessonId)) {
-    return NextResponse.json({ error: ERROR_MESSAGES.invalidLessonId }, { status: 400 });
+    return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
   }
   
-  const lesson = get<any>(`SELECT l.*, g.title as group_title, g.teacher_id FROM lessons l JOIN groups g ON l.group_id = g.id WHERE l.id = ?`, [lessonId]);
+  const lesson = get<Lesson>(
+    `SELECT * FROM lessons WHERE id = ?`,
+    [lessonId]
+  );
   
   if (!lesson) {
-    return notFound(ERROR_MESSAGES.lessonNotFound);
+    return NextResponse.json({ error: 'Заняття не знайдено' }, { status: 404 });
   }
   
   // Check access
@@ -40,11 +48,48 @@ export async function GET(
     return forbidden();
   }
   
-  return NextResponse.json({ lesson });
+  // Get lesson with group, course and teacher details
+  const lessonWithDetails = get<Lesson & { group_title: string; course_title: string; teacher_id: number; teacher_name: string }>(
+    `SELECT 
+      l.id,
+      l.group_id,
+      l.lesson_date,
+      l.start_datetime,
+      l.end_datetime,
+      l.topic,
+      l.status,
+      l.created_by,
+      g.title as group_title,
+      c.title as course_title,
+      g.teacher_id,
+      u.name as teacher_name
+    FROM lessons l
+    JOIN groups g ON l.group_id = g.id
+    JOIN courses c ON g.course_id = c.id
+    JOIN users u ON g.teacher_id = u.id
+    WHERE l.id = ?`,
+    [lessonId]
+  );
+  
+  // Transform to camelCase format
+  const transformedLesson = lessonWithDetails ? {
+    id: lessonWithDetails.id,
+    groupId: lessonWithDetails.group_id,
+    groupTitle: lessonWithDetails.group_title,
+    courseTitle: lessonWithDetails.course_title,
+    teacherId: lessonWithDetails.teacher_id,
+    teacherName: lessonWithDetails.teacher_name,
+    startTime: lessonWithDetails.start_datetime.split(' ')[1].substring(0, 5),
+    endTime: lessonWithDetails.end_datetime.split(' ')[1].substring(0, 5),
+    status: lessonWithDetails.status,
+    topic: lessonWithDetails.topic,
+  } : null;
+  
+  return NextResponse.json({ lesson: transformedLesson });
 }
 
-// PUT /api/lessons/[id] - Update lesson (topic, status)
-export async function PUT(
+// PATCH /api/lessons/[id] - Update a lesson
+export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -57,13 +102,16 @@ export async function PUT(
   const lessonId = parseInt(params.id, 10);
   
   if (isNaN(lessonId)) {
-    return NextResponse.json({ error: ERROR_MESSAGES.invalidLessonId }, { status: 400 });
+    return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
   }
   
-  const lesson = get<any>(`SELECT * FROM lessons WHERE id = ?`, [lessonId]);
+  const lesson = get<Lesson>(
+    `SELECT * FROM lessons WHERE id = ?`,
+    [lessonId]
+  );
   
   if (!lesson) {
-    return notFound(ERROR_MESSAGES.lessonNotFound);
+    return NextResponse.json({ error: 'Заняття не знайдено' }, { status: 404 });
   }
   
   // Check access
@@ -75,24 +123,149 @@ export async function PUT(
   
   try {
     const body = await request.json();
-    const { topic, status } = body;
+    const { topic, status, lesson_date, start_time } = body;
+    
+    let updates: string[] = ['updated_at = CURRENT_TIMESTAMP'];
+    let params: (string | number)[] = [];
     
     if (topic !== undefined) {
-      updateLessonTopic(lessonId, topic);
+      updates.push('topic = ?');
+      params.push(topic);
     }
     
-    if (status === 'done') {
-      markLessonDone(lessonId);
-    } else if (status === 'canceled') {
-      cancelLesson(lessonId);
+    if (status !== undefined) {
+      if (!['scheduled', 'done', 'canceled'].includes(status)) {
+        return NextResponse.json({ error: 'Невірний статус' }, { status: 400 });
+      }
+      
+      // Add history entry when lesson is marked as done
+      if (status === 'done' && lesson.status !== 'done') {
+        addGroupHistoryEntry(
+          lesson.group_id,
+          'lesson_conducted',
+          formatLessonConductedDescription(lesson.lesson_date, lesson.topic),
+          user.id,
+          user.name
+        );
+      }
+      
+      updates.push('status = ?');
+      params.push(status);
     }
     
-    return NextResponse.json({ message: 'Заняття успішно оновлено' });
+    // If changing date/time, recalculate datetime fields
+    if (lesson_date || start_time) {
+      const newDate = lesson_date ? parseISO(lesson_date) : parseISO(lesson.lesson_date);
+      const newTime = start_time ? start_time : lesson.start_datetime.split(' ')[1].substring(0, 5);
+      const [hours, minutes] = newTime.split(':').map(Number);
+      
+      const startDateTime = setMinutes(setHours(newDate, hours), minutes);
+      const endDateTime = new Date(startDateTime.getTime() + 90 * 60 * 1000); // Default 90 min
+      
+      updates.push('lesson_date = ?');
+      params.push(format(newDate, 'yyyy-MM-dd'));
+      updates.push('start_datetime = ?');
+      params.push(format(startDateTime, 'yyyy-MM-dd HH:mm:ss'));
+      updates.push('end_datetime = ?');
+      params.push(format(endDateTime, 'yyyy-MM-dd HH:mm:ss'));
+    }
+    
+    params.push(lessonId);
+    
+    const sql = `UPDATE lessons SET ${updates.join(', ')} WHERE id = ?`;
+    run(sql, params);
+    
+    // Get updated lesson with group, course and teacher details
+    const updatedLessonRaw = get<Lesson & { group_title: string; course_title: string; teacher_id: number; teacher_name: string }>(
+      `SELECT 
+        l.id,
+        l.group_id,
+        l.lesson_date,
+        l.start_datetime,
+        l.end_datetime,
+        l.topic,
+        l.status,
+        l.created_by,
+        g.title as group_title,
+        c.title as course_title,
+        g.teacher_id,
+        u.name as teacher_name
+      FROM lessons l
+      JOIN groups g ON l.group_id = g.id
+      JOIN courses c ON g.course_id = c.id
+      JOIN users u ON g.teacher_id = u.id
+      WHERE l.id = ?`,
+      [lessonId]
+    );
+    
+    // Transform to camelCase format
+    const updatedLesson = updatedLessonRaw ? {
+      id: updatedLessonRaw.id,
+      groupId: updatedLessonRaw.group_id,
+      groupTitle: updatedLessonRaw.group_title,
+      courseTitle: updatedLessonRaw.course_title,
+      teacherId: updatedLessonRaw.teacher_id,
+      teacherName: updatedLessonRaw.teacher_name,
+      startTime: updatedLessonRaw.start_datetime.split(' ')[1].substring(0, 5),
+      endTime: updatedLessonRaw.end_datetime.split(' ')[1].substring(0, 5),
+      status: updatedLessonRaw.status,
+      topic: updatedLessonRaw.topic,
+    } : null;
+    
+    return NextResponse.json({
+      message: 'Заняття оновлено',
+      lesson: updatedLesson,
+    });
   } catch (error) {
     console.error('Update lesson error:', error);
+    return NextResponse.json({ error: 'Не вдалося оновити заняття' }, { status: 500 });
+  }
+}
+
+// DELETE /api/lessons/[id] - Delete a lesson (permanent)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const user = await getAuthUser(request);
+  
+  if (!user) {
+    return unauthorized();
+  }
+  
+  if (user.role !== 'admin') {
+    return forbidden();
+  }
+  
+  const lessonId = parseInt(params.id, 10);
+  
+  if (isNaN(lessonId)) {
+    return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
+  }
+  
+  const lesson = get<Lesson>(
+    `SELECT * FROM lessons WHERE id = ?`,
+    [lessonId]
+  );
+  
+  if (!lesson) {
+    return NextResponse.json({ error: 'Заняття не знайдено' }, { status: 404 });
+  }
+  
+  // Check for attendance records
+  const attendanceCount = get<{ count: number }>(
+    `SELECT COUNT(*) as count FROM attendance WHERE lesson_id = ?`,
+    [lessonId]
+  );
+  
+  if (attendanceCount && attendanceCount.count > 0) {
     return NextResponse.json(
-      { error: ERROR_MESSAGES.updateFailed },
-      { status: 500 }
+      { error: 'Неможливо видалити заняття: є записи відвідуваності' },
+      { status: 400 }
     );
   }
+  
+  run(`DELETE FROM lessons WHERE id = ?`, [lessonId]);
+  
+  return NextResponse.json({ message: 'Заняття видалено' });
 }

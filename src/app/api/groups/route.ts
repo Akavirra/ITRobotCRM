@@ -13,6 +13,7 @@ import {
   type CreateGroupInput,
 } from '@/lib/groups';
 import { getCourseById } from '@/lib/courses';
+import { addGroupHistoryEntry } from '@/lib/group-history';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -202,6 +203,15 @@ export async function POST(request: NextRequest) {
     };
     
     const result = createGroup(input);
+    
+    // Add history entry for group creation
+    addGroupHistoryEntry(
+      result.id,
+      'created',
+      `Створено групу: ${title}`,
+      user.id,
+      user.name
+    );
     
     return NextResponse.json({
       id: result.id,

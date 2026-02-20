@@ -9,6 +9,8 @@ import {
   wasStudentInGroup,
   reactivateStudentInGroup,
 } from '@/lib/groups';
+import { addGroupHistoryEntry, formatStudentAddedDescription, formatStudentRemovedDescription } from '@/lib/group-history';
+import { get } from '@/db';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -100,6 +102,19 @@ export async function POST(
     // Check if student was previously in group (inactive) - reactivate them
     if (wasStudentInGroup(studentId, groupId)) {
       const studentGroupId = reactivateStudentInGroup(studentId, groupId, join_date);
+      
+      // Get student name for history
+      const student = get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [studentId]);
+      if (student) {
+        addGroupHistoryEntry(
+          groupId,
+          'student_added',
+          formatStudentAddedDescription(student.full_name),
+          user.id,
+          user.name
+        );
+      }
+      
       return NextResponse.json({
         id: studentGroupId,
         message: 'Учня успішно повторно додано до групи',
@@ -111,6 +126,18 @@ export async function POST(
       groupId,
       join_date
     );
+    
+    // Get student name for history
+    const student = get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [studentId]);
+    if (student) {
+      addGroupHistoryEntry(
+        groupId,
+        'student_added',
+        formatStudentAddedDescription(student.full_name),
+        user.id,
+        user.name
+      );
+    }
     
     return NextResponse.json({
       id: studentGroupId,
@@ -151,6 +178,19 @@ export async function DELETE(
   const studentId = searchParams.get('studentId');
   
   // Support both studentGroupId and studentId for removal
+  // Get student name before removal for history
+  let studentName = '';
+  if (studentGroupId) {
+    const studentInfo = get<{ student_id: number }>(`SELECT student_id FROM student_groups WHERE id = ?`, [parseInt(studentGroupId)]);
+    if (studentInfo) {
+      const student = get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [studentInfo.student_id]);
+      studentName = student?.full_name || '';
+    }
+  } else if (studentId) {
+    const student = get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [parseInt(studentId)]);
+    studentName = student?.full_name || '';
+  }
+  
   if (studentGroupId) {
     removeStudentFromGroup(parseInt(studentGroupId));
   } else if (studentId) {
@@ -159,6 +199,17 @@ export async function DELETE(
     return NextResponse.json(
       { error: ERROR_MESSAGES.studentGroupIdRequired },
       { status: 400 }
+    );
+  }
+  
+  // Add history entry for student removal
+  if (studentName) {
+    addGroupHistoryEntry(
+      groupId,
+      'student_removed',
+      formatStudentRemovedDescription(studentName),
+      user.id,
+      user.name
     );
   }
   
