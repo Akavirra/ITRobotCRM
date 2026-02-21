@@ -254,8 +254,8 @@ export async function PUT(
     
     // Check if teacher changed
     if (existingGroup.teacher_id !== parseInt(teacher_id)) {
-      const oldTeacher = await get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [existingGroup.teacher_id]);
-      const newTeacher = await get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [parseInt(teacher_id)]);
+      const oldTeacher = await get<{ name: string }>(`SELECT name FROM users WHERE id = $1`, [existingGroup.teacher_id]);
+      const newTeacher = await get<{ name: string }>(`SELECT name FROM users WHERE id = $2`, [parseInt(teacher_id)]);
       if (oldTeacher && newTeacher) {
         addGroupHistoryEntry(
           groupId,
@@ -271,8 +271,8 @@ export async function PUT(
     
     // Check other field changes
     if (existingGroup.course_id !== parseInt(course_id)) {
-      const oldCourse = await get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [existingGroup.course_id]);
-      const newCourse = await get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [parseInt(course_id)]);
+      const oldCourse = await get<{ title: string }>(`SELECT title FROM courses WHERE id = $1`, [existingGroup.course_id]);
+      const newCourse = await get<{ title: string }>(`SELECT title FROM courses WHERE id = $2`, [parseInt(course_id)]);
       if (oldCourse && newCourse) {
         addGroupHistoryEntry(
           groupId,
@@ -396,7 +396,7 @@ export async function DELETE(
     
     // Get user's password hash from database
     const userWithPassword = await get<{ password_hash: string }>(
-      `SELECT password_hash FROM users WHERE id = ?`,
+      `SELECT password_hash FROM users WHERE id = $1`,
       [user.id]
     );
     

@@ -27,7 +27,7 @@ export async function POST(
   }
   
   const lesson = await get<Lesson>(
-    `SELECT * FROM lessons WHERE id = ?`,
+    `SELECT * FROM lessons WHERE id = $1`,
     [lessonId]
   );
   
@@ -52,7 +52,7 @@ export async function POST(
     const { reason } = body;
     
     await run(
-      `UPDATE lessons SET status = 'canceled', topic = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      `UPDATE lessons SET status = 'canceled', topic = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
       [reason || 'Скасовано', lessonId]
     );
     

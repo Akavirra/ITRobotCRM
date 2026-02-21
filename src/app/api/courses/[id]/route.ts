@@ -203,7 +203,7 @@ export async function DELETE(
     
     // Get user's password hash from database
     const userWithPassword = await get<{ password_hash: string }>(
-      `SELECT password_hash FROM users WHERE id = ?`,
+      `SELECT password_hash FROM users WHERE id = $1`,
       [user.id]
     );
     

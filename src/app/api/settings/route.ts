@@ -161,7 +161,7 @@ export async function PUT(request: NextRequest) {
           lesson_reminders,
           payment_alerts,
           weekly_report
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           user.id,
           phone || '',

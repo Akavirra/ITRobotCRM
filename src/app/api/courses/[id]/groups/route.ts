@@ -42,7 +42,7 @@ export async function GET(
     `SELECT g.id, g.public_id, g.title, g.weekly_day, g.start_time, g.teacher_id, g.status, u.name as teacher_name, g.created_at
      FROM groups g
      LEFT JOIN users u ON g.teacher_id = u.id
-     WHERE g.course_id = ?
+     WHERE g.course_id = $1
      ORDER BY g.weekly_day, g.start_time`,
     [courseId]
   );

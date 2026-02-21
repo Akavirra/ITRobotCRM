@@ -41,7 +41,7 @@ export async function GET(
   }
   
   // Check if course exists
-  const course = await all<{ id: number }>('SELECT id FROM courses WHERE id = ?', [courseId]);
+  const course = await all<{ id: number }>('SELECT id FROM courses WHERE id = $1', [courseId]);
   
   if (!course[0]) {
     return NextResponse.json({ error: ERROR_MESSAGES.courseNotFound }, { status: 404 });
@@ -65,7 +65,7 @@ export async function GET(
     FROM students s
     JOIN student_groups sg ON s.id = sg.student_id
     JOIN groups g ON sg.group_id = g.id
-    WHERE g.course_id = ? AND sg.is_active = 1
+    WHERE g.course_id = $1 AND sg.is_active = 1
     ORDER BY s.full_name, g.title`,
     [courseId]
   );

@@ -104,7 +104,7 @@ export async function POST(
       const studentGroupId = await reactivateStudentInGroup(studentId, groupId, join_date);
       
       // Get student name for history
-      const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [studentId]);
+      const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = $1`, [studentId]);
       if (student) {
         await addGroupHistoryEntry(
           groupId,
@@ -128,7 +128,7 @@ export async function POST(
     );
     
     // Get student name for history
-    const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [studentId]);
+    const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = $2`, [studentId]);
     if (student) {
       addGroupHistoryEntry(
         groupId,
@@ -181,13 +181,13 @@ export async function DELETE(
   // Get student name before removal for history
   let studentName = '';
   if (studentGroupId) {
-    const studentInfo = await get<{ student_id: number }>(`SELECT student_id FROM student_groups WHERE id = ?`, [parseInt(studentGroupId)]);
+    const studentInfo = await get<{ student_id: number }>(`SELECT student_id FROM student_groups WHERE id = $1`, [parseInt(studentGroupId)]);
     if (studentInfo) {
-      const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [studentInfo.student_id]);
+      const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = $2`, [studentInfo.student_id]);
       studentName = student?.full_name || '';
     }
   } else if (studentId) {
-    const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = ?`, [parseInt(studentId)]);
+    const student = await get<{ full_name: string }>(`SELECT full_name FROM students WHERE id = $1`, [parseInt(studentId)]);
     studentName = student?.full_name || '';
   }
   

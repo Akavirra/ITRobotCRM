@@ -40,7 +40,7 @@ export async function POST(
     `SELECT l.*, g.duration_minutes as duration_minutes 
      FROM lessons l 
      JOIN groups g ON l.group_id = g.id 
-     WHERE l.id = ?`,
+     WHERE l.id = $1`,
     [lessonId]
   );
   
@@ -74,12 +74,12 @@ export async function POST(
     
     await run(
       `UPDATE lessons SET 
-        lesson_date = ?, 
-        start_datetime = ?, 
-        end_datetime = ?, 
+        lesson_date = $1, 
+        start_datetime = $2, 
+        end_datetime = $3, 
         status = 'scheduled',
         updated_at = CURRENT_TIMESTAMP 
-      WHERE id = ?`,
+      WHERE id = $4`,
       [
         format(newDateObj, 'yyyy-MM-dd'),
         format(startDateTime, 'yyyy-MM-dd HH:mm:ss'),
@@ -88,7 +88,7 @@ export async function POST(
       ]
     );
     
-    const updatedLesson = await get<Lesson>(`SELECT * FROM lessons WHERE id = ?`, [lessonId]);
+    const updatedLesson = await get<Lesson>(`SELECT * FROM lessons WHERE id = $1`, [lessonId]);
     
     return NextResponse.json({
       message: 'Заняття перенесено',

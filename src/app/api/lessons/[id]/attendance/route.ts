@@ -32,7 +32,7 @@ export async function GET(
   }
   
   // Get lesson to check group access
-  const lesson = await get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = ?`, [lessonId]);
+  const lesson = await get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = $1`, [lessonId]);
   
   if (!lesson) {
     return NextResponse.json({ error: ERROR_MESSAGES.lessonNotFound }, { status: 404 });
@@ -67,7 +67,7 @@ export async function POST(
   }
   
   // Get lesson to check group access
-  const lesson = await get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = ?`, [lessonId]);
+  const lesson = await get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = $1`, [lessonId]);
   
   if (!lesson) {
     return NextResponse.json({ error: ERROR_MESSAGES.lessonNotFound }, { status: 404 });
@@ -95,7 +95,7 @@ export async function POST(
         
         // Check if this is marking attendance for a 'done' lesson - add history entry
         const lessonInfo = await get<{ group_id: number; status: string; lesson_date: string; topic: string }>(
-          `SELECT group_id, status, lesson_date, topic FROM lessons WHERE id = ?`,
+          `SELECT group_id, status, lesson_date, topic FROM lessons WHERE id = $2`,
           [lessonId]
         );
         
