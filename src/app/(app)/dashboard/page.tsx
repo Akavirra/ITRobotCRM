@@ -215,7 +215,7 @@ export default function DashboardPage() {
       <div className="card">
         <div className="card-header">
           <h3 className="card-title">{t('dashboard.upcomingLessons')}</h3>
-          <a href="/lessons" className="btn btn-secondary btn-sm">{t('dashboard.allLessons')}</a>
+          <a href="/schedule" className="btn btn-secondary btn-sm">{t('dashboard.allLessons')}</a>
         </div>
         <div className="table-container">
           {upcomingLessons.length > 0 ? (

@@ -32,7 +32,7 @@ export async function GET(
   }
   
   // Get lesson to check group access
-  const lesson = get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = ?`, [lessonId]);
+  const lesson = await get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = ?`, [lessonId]);
   
   if (!lesson) {
     return NextResponse.json({ error: ERROR_MESSAGES.lessonNotFound }, { status: 404 });
@@ -44,7 +44,7 @@ export async function GET(
     return forbidden();
   }
   
-  const attendance = getAttendanceForLessonWithStudents(lessonId);
+  const attendance = await getAttendanceForLessonWithStudents(lessonId);
   
   return NextResponse.json({ attendance });
 }
@@ -67,7 +67,7 @@ export async function POST(
   }
   
   // Get lesson to check group access
-  const lesson = get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = ?`, [lessonId]);
+  const lesson = await get<{ group_id: number }>(`SELECT group_id FROM lessons WHERE id = ?`, [lessonId]);
   
   if (!lesson) {
     return NextResponse.json({ error: ERROR_MESSAGES.lessonNotFound }, { status: 404 });
@@ -94,7 +94,7 @@ export async function POST(
         setAttendance(lessonId, parseInt(studentId), status, user.id, comment, makeupLessonId);
         
         // Check if this is marking attendance for a 'done' lesson - add history entry
-        const lessonInfo = get<{ group_id: number; status: string; lesson_date: string; topic: string }>(
+        const lessonInfo = await get<{ group_id: number; status: string; lesson_date: string; topic: string }>(
           `SELECT group_id, status, lesson_date, topic FROM lessons WHERE id = ?`,
           [lessonId]
         );
@@ -108,15 +108,15 @@ export async function POST(
             { status: 400 }
           );
         }
-        setAttendanceForAll(lessonId, status, user.id);
+        await setAttendanceForAll(lessonId, status, user.id);
         return NextResponse.json({ message: 'Відвідуваність для всіх успішно встановлена' });
         
       case 'clear':
-        clearAttendanceForLesson(lessonId);
+        await clearAttendanceForLesson(lessonId);
         return NextResponse.json({ message: 'Відвідуваність успішно очищена' });
         
       case 'copyPrevious':
-        const result = copyAttendanceFromPreviousLesson(lessonId, user.id);
+        const result = await copyAttendanceFromPreviousLesson(lessonId, user.id);
         return NextResponse.json({ 
           message: 'Відвідуваність успішно скопійована',
           copied: result.copied 

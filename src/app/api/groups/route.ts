@@ -76,9 +76,9 @@ export async function GET(request: NextRequest) {
   
   if (Object.keys(filters).length > 1 || search) {
     // Apply filters for admin
-    groups = getGroupsFiltered(filters);
+    groups = await getGroupsFiltered(filters);
   } else {
-    groups = getGroupsWithDetails(includeInactive);
+    groups = await getGroupsWithDetails(includeInactive);
   }
   
   return NextResponse.json({ groups });
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Get course to generate title
-    const course = getCourseById(parseInt(course_id));
+    const course = await getCourseById(parseInt(course_id));
     if (!course) {
       return NextResponse.json(
         { error: ERROR_MESSAGES.courseNotFound },
@@ -202,10 +202,10 @@ export async function POST(request: NextRequest) {
       timezone: timezone || 'Europe/Uzhgorod',
     };
     
-    const result = createGroup(input);
+    const result = await createGroup(input);
     
     // Add history entry for group creation
-    addGroupHistoryEntry(
+    await addGroupHistoryEntry(
       result.id,
       'created',
       `Створено групу: ${title}`,

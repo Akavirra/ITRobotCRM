@@ -38,18 +38,18 @@ export async function GET(request: NextRequest) {
     
     if (limitParam) {
       const limit = parseInt(limitParam, 10);
-      students = quickSearchStudents(search, limit);
+      students = await quickSearchStudents(search, limit);
     } else if (withGroups) {
-      students = searchStudentsWithGroups(search, includeInactive);
+      students = await searchStudentsWithGroups(search, includeInactive);
     } else {
-      students = searchStudents(search, includeInactive);
+      students = await searchStudents(search, includeInactive);
     }
   } else if (withGroups) {
-    students = getStudentsWithGroups(includeInactive);
+    students = await getStudentsWithGroups(includeInactive);
   } else if (withGroupCount) {
-    students = getStudentsWithGroupCount(includeInactive);
+    students = await getStudentsWithGroupCount(includeInactive);
   } else {
-    students = getStudents(includeInactive);
+    students = await getStudents(includeInactive);
   }
   
   return NextResponse.json({ students });
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     // Serialize interested_courses array to JSON string
     const interestedCoursesJson = interested_courses ? JSON.stringify(interested_courses) : undefined;
     
-    const result = createStudent(
+    const result = await createStudent(
       full_name.trim(),
       phone?.trim(),
       email?.trim(),

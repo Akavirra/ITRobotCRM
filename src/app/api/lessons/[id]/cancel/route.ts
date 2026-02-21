@@ -26,7 +26,7 @@ export async function POST(
     return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
   }
   
-  const lesson = get<Lesson>(
+  const lesson = await get<Lesson>(
     `SELECT * FROM lessons WHERE id = ?`,
     [lessonId]
   );
@@ -51,7 +51,7 @@ export async function POST(
     const body = await request.json();
     const { reason } = body;
     
-    run(
+    await run(
       `UPDATE lessons SET status = 'canceled', topic = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       [reason || 'Скасовано', lessonId]
     );

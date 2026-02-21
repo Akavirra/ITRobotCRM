@@ -46,7 +46,7 @@ export async function GET(
     return NextResponse.json({ error: ERROR_MESSAGES.invalidCourseId }, { status: 400 });
   }
   
-  const course = getCourseById(courseId);
+  const course = await getCourseById(courseId);
   
   if (!course) {
     return notFound(ERROR_MESSAGES.courseNotFound);
@@ -76,7 +76,7 @@ export async function PUT(
     return NextResponse.json({ error: ERROR_MESSAGES.invalidCourseId }, { status: 400 });
   }
   
-  const existingCourse = getCourseById(courseId);
+  const existingCourse = await getCourseById(courseId);
   
   if (!existingCourse) {
     return notFound(ERROR_MESSAGES.courseNotFound);
@@ -133,7 +133,7 @@ export async function PUT(
       );
     }
     
-    updateCourse(
+    await updateCourse(
       courseId,
       title.trim(),
       description?.trim(),
@@ -174,7 +174,7 @@ export async function DELETE(
       return NextResponse.json({ error: ERROR_MESSAGES.invalidCourseId }, { status: 400 });
     }
     
-    const existingCourse = getCourseById(courseId);
+    const existingCourse = await getCourseById(courseId);
     
     if (!existingCourse) {
       return notFound(ERROR_MESSAGES.courseNotFound);
@@ -202,7 +202,7 @@ export async function DELETE(
     }
     
     // Get user's password hash from database
-    const userWithPassword = get<{ password_hash: string }>(
+    const userWithPassword = await get<{ password_hash: string }>(
       `SELECT password_hash FROM users WHERE id = ?`,
       [user.id]
     );
@@ -222,7 +222,7 @@ export async function DELETE(
     }
     
     // Attempt to delete the course
-    const deleted = deleteCourse(courseId);
+    const deleted = await deleteCourse(courseId);
     
     if (!deleted) {
       return NextResponse.json(
@@ -262,13 +262,13 @@ export async function PATCH(
     return NextResponse.json({ error: ERROR_MESSAGES.invalidCourseId }, { status: 400 });
   }
   
-  const existingCourse = getCourseById(courseId);
+  const existingCourse = await getCourseById(courseId);
   
   if (!existingCourse) {
     return notFound(ERROR_MESSAGES.courseNotFound);
   }
   
-  restoreCourse(courseId);
+  await restoreCourse(courseId);
   
   return NextResponse.json({ message: 'Курс успішно відновлено' });
 }

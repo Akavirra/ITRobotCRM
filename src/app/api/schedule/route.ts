@@ -78,31 +78,32 @@ export async function GET(request: NextRequest) {
     JOIN groups g ON l.group_id = g.id
     JOIN courses c ON g.course_id = c.id
     JOIN users u ON g.teacher_id = u.id
-    WHERE l.lesson_date >= ? AND l.lesson_date <= ?
+    WHERE l.lesson_date >= $1 AND l.lesson_date <= $2
   `;
   
   const params: (string | number)[] = [startDateStr, endDateStr];
+  let paramIndex = 3;
   
   // Add filters
   if (groupId) {
-    sql += ` AND l.group_id = ?`;
+    sql += ` AND l.group_id = $${paramIndex++}`;
     params.push(parseInt(groupId));
   }
   
   if (teacherId) {
-    sql += ` AND g.teacher_id = ?`;
+    sql += ` AND g.teacher_id = $${paramIndex++}`;
     params.push(parseInt(teacherId));
   }
   
   // Filter by accessible groups
   if (user.role !== 'admin' && accessibleGroupIds.length > 0) {
-    sql += ` AND l.group_id IN (${accessibleGroupIds.map(() => '?').join(',')})`;
+    sql += ` AND l.group_id IN (${accessibleGroupIds.map(() => `$${paramIndex++}`).join(',')})`;
     params.push(...accessibleGroupIds);
   }
   
   sql += ` ORDER BY l.lesson_date ASC, g.start_time ASC`;
   
-  const lessons = all<LessonRow>(sql, params);
+  const lessons = await all<LessonRow>(sql, params);
   
   // Group lessons by day
   const daysMap: Record<string, LessonRow[]> = {};

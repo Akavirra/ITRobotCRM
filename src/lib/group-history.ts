@@ -24,7 +24,7 @@ export interface GroupHistoryEntry {
 }
 
 // Add entry to group history
-export function addGroupHistoryEntry(
+export async function addGroupHistoryEntry(
   groupId: number,
   actionType: GroupHistoryActionType,
   actionDescription: string,
@@ -32,10 +32,10 @@ export function addGroupHistoryEntry(
   userName: string,
   oldValue?: string | null,
   newValue?: string | null
-): number {
-  const result = run(
+): Promise<number> {
+  const result = await run(
     `INSERT INTO group_history (group_id, action_type, action_description, old_value, new_value, user_id, user_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [
       groupId,
       actionType,
@@ -47,31 +47,31 @@ export function addGroupHistoryEntry(
     ]
   );
   
-  return Number(result.lastInsertRowid);
+  return Number(result[0]?.id);
 }
 
 // Get group history entries
-export function getGroupHistory(groupId: number, limit?: number): GroupHistoryEntry[] {
+export async function getGroupHistory(groupId: number, limit?: number): Promise<GroupHistoryEntry[]> {
   const sql = limit
-    ? `SELECT * FROM group_history WHERE group_id = ? ORDER BY created_at DESC LIMIT ?`
-    : `SELECT * FROM group_history WHERE group_id = ? ORDER BY created_at DESC`;
+    ? `SELECT * FROM group_history WHERE group_id = $1 ORDER BY created_at DESC LIMIT $2`
+    : `SELECT * FROM group_history WHERE group_id = $1 ORDER BY created_at DESC`;
   
   const params = limit ? [groupId, limit] : [groupId];
   
-  return all<GroupHistoryEntry>(sql, params);
+  return await all<GroupHistoryEntry>(sql, params);
 }
 
 // Get recent group history entries (for preview)
-export function getRecentGroupHistory(groupId: number, count: number = 4): GroupHistoryEntry[] {
-  return all<GroupHistoryEntry>(
-    `SELECT * FROM group_history WHERE group_id = ? ORDER BY created_at DESC LIMIT ?`,
+export async function getRecentGroupHistory(groupId: number, count: number = 4): Promise<GroupHistoryEntry[]> {
+  return await all<GroupHistoryEntry>(
+    `SELECT * FROM group_history WHERE group_id = $1 ORDER BY created_at DESC LIMIT $2`,
     [groupId, count]
   );
 }
 
 // Delete group history entries (when group is deleted)
-export function deleteGroupHistory(groupId: number): void {
-  run(`DELETE FROM group_history WHERE group_id = ?`, [groupId]);
+export async function deleteGroupHistory(groupId: number): Promise<void> {
+  await run(`DELETE FROM group_history WHERE group_id = $1`, [groupId]);
 }
 
 // Helper function to format action description for student added

@@ -23,7 +23,7 @@ export async function POST(
     return NextResponse.json({ error: 'Невірний ID групи' }, { status: 400 });
   }
   
-  const existingGroup = getGroupById(groupId);
+  const existingGroup = await getGroupById(groupId);
   
   if (!existingGroup) {
     return notFound('Групу не знайдено');
@@ -34,11 +34,11 @@ export async function POST(
     const { action } = body; // 'archive' or 'restore'
     
     if (action === 'restore') {
-      restoreGroup(groupId);
+      await restoreGroup(groupId);
       return NextResponse.json({ message: 'Групу успішно відновлено', status: 'active' });
     } else {
       // Default action is archive - set status to inactive
-      archiveGroup(groupId);
+      await archiveGroup(groupId);
       return NextResponse.json({ message: 'Групу успішно архівовано', status: 'inactive' });
     }
   } catch (error) {

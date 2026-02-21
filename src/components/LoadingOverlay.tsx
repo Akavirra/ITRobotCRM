@@ -14,7 +14,7 @@ const icons = [
   { Icon: Video, color: "text-yellow-400", delay: 0.5 },
 ];
 
-export const LoadingOverlay = ({ isVisible }) => {
+export const LoadingOverlay = ({ isVisible }: LoadingOverlayProps) => {
   if (!isVisible) return null;
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-white">

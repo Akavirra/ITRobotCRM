@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   // Teachers can only see their own groups
   const accessibleGroups = await getAccessibleGroupIds(user);
   
-  const debtors = getStudentsWithDebt(month);
+  const debtors = await getStudentsWithDebt(month);
   
   // Filter by accessible groups for teachers
   const filteredDebtors = user.role === 'admin' 

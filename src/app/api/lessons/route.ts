@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   
   if (groupId) {
     // Get lessons for a specific group
-    const lessons = getLessonsForGroup(parseInt(groupId), startDate, endDate);
+    const lessons = await getLessonsForGroup(parseInt(groupId), startDate, endDate);
     return NextResponse.json({ lessons });
   }
   

@@ -24,13 +24,13 @@ export async function getAuthUser(request: NextRequest): Promise<AuthUser | null
     return null;
   }
   
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   
   if (!session) {
     return null;
   }
   
-  const user = getUserById(session.user_id);
+  const user = await getUserById(session.user_id);
   
   if (!user || !user.is_active) {
     return null;

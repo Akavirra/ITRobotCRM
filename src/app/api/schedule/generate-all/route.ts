@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const weeksAhead = body.weeksAhead || 8;
     
-    const results = generateLessonsForAllGroups(weeksAhead, user.id);
+    const results = await generateLessonsForAllGroups(weeksAhead, user.id);
     
     const totalGenerated = results.reduce((sum, r) => sum + r.generated, 0);
     const totalSkipped = results.reduce((sum, r) => sum + r.skipped, 0);

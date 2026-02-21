@@ -32,7 +32,7 @@ export async function GET(
     return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
   }
   
-  const lesson = get<Lesson>(
+  const lesson = await get<Lesson>(
     `SELECT * FROM lessons WHERE id = ?`,
     [lessonId]
   );
@@ -49,7 +49,7 @@ export async function GET(
   }
   
   // Get lesson with group, course and teacher details
-  const lessonWithDetails = get<Lesson & { group_title: string; course_title: string; teacher_id: number; teacher_name: string }>(
+  const lessonWithDetails = await get<Lesson & { group_title: string; course_title: string; teacher_id: number; teacher_name: string }>(
     `SELECT 
       l.id,
       l.group_id,
@@ -105,7 +105,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
   }
   
-  const lesson = get<Lesson>(
+  const lesson = await get<Lesson>(
     `SELECT * FROM lessons WHERE id = ?`,
     [lessonId]
   );
@@ -173,10 +173,10 @@ export async function PATCH(
     params.push(lessonId);
     
     const sql = `UPDATE lessons SET ${updates.join(', ')} WHERE id = ?`;
-    run(sql, params);
+    await run(sql, params);
     
     // Get updated lesson with group, course and teacher details
-    const updatedLessonRaw = get<Lesson & { group_title: string; course_title: string; teacher_id: number; teacher_name: string }>(
+    const updatedLessonRaw = await get<Lesson & { group_title: string; course_title: string; teacher_id: number; teacher_name: string }>(
       `SELECT 
         l.id,
         l.group_id,
@@ -243,7 +243,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
   }
   
-  const lesson = get<Lesson>(
+  const lesson = await get<Lesson>(
     `SELECT * FROM lessons WHERE id = ?`,
     [lessonId]
   );
@@ -253,7 +253,7 @@ export async function DELETE(
   }
   
   // Check for attendance records
-  const attendanceCount = get<{ count: number }>(
+  const attendanceCount = await get<{ count: number }>(
     `SELECT COUNT(*) as count FROM attendance WHERE lesson_id = ?`,
     [lessonId]
   );
@@ -265,7 +265,7 @@ export async function DELETE(
     );
   }
   
-  run(`DELETE FROM lessons WHERE id = ?`, [lessonId]);
+  await run(`DELETE FROM lessons WHERE id = ?`, [lessonId]);
   
   return NextResponse.json({ message: 'Заняття видалено' });
 }

@@ -62,6 +62,15 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('Login error:', error);
+    
+    // Check if it's an access denied error
+    if (error instanceof Error && error.message.includes('Доступ заборонено')) {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.adminOnlyAccess },
+        { status: 403 }
+      );
+    }
+    
     return NextResponse.json(
       { error: ERROR_MESSAGES.internalError },
       { status: 500 }

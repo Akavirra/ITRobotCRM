@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const includeInactive = searchParams.get('includeInactive') === 'true';
   
-  const users = all(
+  const users = await all(
     includeInactive
       ? `SELECT id, name, email, role, is_active, created_at, updated_at FROM users ORDER BY created_at DESC`
       : `SELECT id, name, email, role, is_active, created_at, updated_at FROM users WHERE is_active = 1 ORDER BY created_at DESC`
@@ -67,13 +67,13 @@ export async function POST(request: NextRequest) {
     
     const passwordHash = await hashPassword(password);
     
-    const result = run(
-      `INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)`,
+    const result = await run(
+      `INSERT INTO users (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id`,
       [name.trim(), email.trim().toLowerCase(), passwordHash, role]
     );
     
     return NextResponse.json({
-      id: result.lastInsertRowid,
+      id: result[0]?.id,
       message: 'Користувача успішно створено',
     });
   } catch (error: any) {

@@ -36,7 +36,7 @@ export async function POST(
     return NextResponse.json({ error: 'Невірний ID заняття' }, { status: 400 });
   }
   
-  const lesson = get<Lesson>(
+  const lesson = await get<Lesson>(
     `SELECT l.*, g.duration_minutes as duration_minutes 
      FROM lessons l 
      JOIN groups g ON l.group_id = g.id 
@@ -72,7 +72,7 @@ export async function POST(
     const duration = keepDuration ? lesson.duration_minutes : 90;
     const endDateTime = new Date(startDateTime.getTime() + duration * 60 * 1000);
     
-    run(
+    await run(
       `UPDATE lessons SET 
         lesson_date = ?, 
         start_datetime = ?, 
@@ -88,7 +88,7 @@ export async function POST(
       ]
     );
     
-    const updatedLesson = get<Lesson>(`SELECT * FROM lessons WHERE id = ?`, [lessonId]);
+    const updatedLesson = await get<Lesson>(`SELECT * FROM lessons WHERE id = ?`, [lessonId]);
     
     return NextResponse.json({
       message: 'Заняття перенесено',

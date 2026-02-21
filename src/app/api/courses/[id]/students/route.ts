@@ -41,18 +41,15 @@ export async function GET(
   }
   
   // Check if course exists
-  const course = await new Promise((resolve) => {
-    const result = all<{ id: number }>('SELECT id FROM courses WHERE id = ?', [courseId]);
-    resolve(result[0] || null);
-  });
+  const course = await all<{ id: number }>('SELECT id FROM courses WHERE id = ?', [courseId]);
   
-  if (!course) {
+  if (!course[0]) {
     return NextResponse.json({ error: ERROR_MESSAGES.courseNotFound }, { status: 404 });
   }
   
   // Get all students from all groups of this course
   // Using GROUP BY to get unique students with their group info
-  const students = all<CourseStudent>(
+  const students = await all<CourseStudent>(
     `SELECT 
       s.id, 
       s.public_id, 

@@ -29,10 +29,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: ERROR_MESSAGES.accessDenied }, { status: 403 });
   }
   
-  const stats = getPaymentStats(startDate, endDate, groupId ? parseInt(groupId) : undefined, courseId ? parseInt(courseId) : undefined);
+  const stats = await getPaymentStats(startDate, endDate, groupId ? parseInt(groupId) : undefined, courseId ? parseInt(courseId) : undefined);
   
   if (format === 'csv') {
-    const payments = getPaymentsForExport(startDate, endDate, groupId ? parseInt(groupId) : undefined, courseId ? parseInt(courseId) : undefined);
+    const payments = await getPaymentsForExport(startDate, endDate, groupId ? parseInt(groupId) : undefined, courseId ? parseInt(courseId) : undefined);
     
     const headers = ['id', 'student_name', 'group_title', 'month', 'amount', 'method', 'paid_at', 'note', 'created_by_name'];
     const csvRows = [headers.join(',')];

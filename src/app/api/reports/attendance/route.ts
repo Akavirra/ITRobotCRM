@@ -34,15 +34,15 @@ export async function GET(request: NextRequest) {
   
   if (studentId) {
     // Report for a specific student
-    const stats = getStudentAttendanceStats(parseInt(studentId), groupId ? parseInt(groupId) : undefined, startDate, endDate);
+    const stats = await getStudentAttendanceStats(parseInt(studentId), groupId ? parseInt(groupId) : undefined, startDate, endDate);
     report = [{ student_id: parseInt(studentId), ...stats }];
   } else if (groupId) {
     // Report for a specific group
-    report = getGroupAttendanceStats(parseInt(groupId), startDate, endDate);
+    report = await getGroupAttendanceStats(parseInt(groupId), startDate, endDate);
   } else {
     // Report for all accessible groups
     for (const gId of accessibleGroups) {
-      const groupStats = getGroupAttendanceStats(gId, startDate, endDate);
+      const groupStats = await getGroupAttendanceStats(gId, startDate, endDate);
       report.push(...groupStats);
     }
   }

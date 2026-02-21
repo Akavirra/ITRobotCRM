@@ -255,7 +255,7 @@ export async function GET(
     }
     
     // Fetch course
-    const course = getCourseById(courseId);
+    const course = await getCourseById(courseId);
     
     if (!course) {
       return NextResponse.json({ error: 'Курс не знайдено' }, { status: 404 });

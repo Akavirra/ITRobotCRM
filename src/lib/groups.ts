@@ -112,16 +112,16 @@ export function validateGroupTitle(title: string, courseTitle: string): boolean 
 }
 
 // Get all groups
-export function getGroups(includeInactive: boolean = false): Group[] {
+export async function getGroups(includeInactive: boolean = false): Promise<Group[]> {
   const sql = includeInactive
     ? `SELECT * FROM groups ORDER BY created_at DESC`
     : `SELECT * FROM groups WHERE is_active = 1 ORDER BY created_at DESC`;
   
-  return all<Group>(sql);
+  return await all<Group>(sql);
 }
 
 // Get groups with details
-export function getGroupsWithDetails(includeInactive: boolean = false): GroupWithDetails[] {
+export async function getGroupsWithDetails(includeInactive: boolean = false): Promise<GroupWithDetails[]> {
   const sql = includeInactive
     ? `SELECT g.*, c.title as course_title, u.name as teacher_name,
         (SELECT COUNT(*) FROM student_groups sg WHERE sg.group_id = g.id AND sg.is_active = 1) as students_count
@@ -137,45 +137,45 @@ export function getGroupsWithDetails(includeInactive: boolean = false): GroupWit
        WHERE g.is_active = 1
        ORDER BY g.created_at DESC`;
   
-  return all<GroupWithDetails>(sql);
+  return await all<GroupWithDetails>(sql);
 }
 
 // Get groups for a teacher
-export function getGroupsForTeacher(teacherId: number, includeInactive: boolean = false): GroupWithDetails[] {
+export async function getGroupsForTeacher(teacherId: number, includeInactive: boolean = false): Promise<GroupWithDetails[]> {
   const sql = includeInactive
     ? `SELECT g.*, c.title as course_title, u.name as teacher_name,
         (SELECT COUNT(*) FROM student_groups sg WHERE sg.group_id = g.id AND sg.is_active = 1) as students_count
        FROM groups g
        JOIN courses c ON g.course_id = c.id
        JOIN users u ON g.teacher_id = u.id
-       WHERE g.teacher_id = ?
+       WHERE g.teacher_id = $1
        ORDER BY g.created_at DESC`
     : `SELECT g.*, c.title as course_title, u.name as teacher_name,
         (SELECT COUNT(*) FROM student_groups sg WHERE sg.group_id = g.id AND sg.is_active = 1) as students_count
        FROM groups g
        JOIN courses c ON g.course_id = c.id
        JOIN users u ON g.teacher_id = u.id
-       WHERE g.teacher_id = ? AND g.is_active = 1
+       WHERE g.teacher_id = $1 AND g.is_active = 1
        ORDER BY g.created_at DESC`;
   
-  return all<GroupWithDetails>(sql, [teacherId]);
+  return await all<GroupWithDetails>(sql, [teacherId]);
 }
 
 // Get group by ID
-export function getGroupById(id: number): Group | null {
-  const group = get<Group>(`SELECT * FROM groups WHERE id = ?`, [id]);
+export async function getGroupById(id: number): Promise<Group | null> {
+  const group = await get<Group>(`SELECT * FROM groups WHERE id = $1`, [id]);
   return group || null;
 }
 
 // Get group with details by ID
-export function getGroupWithDetailsById(id: number): GroupWithDetails | null {
-  const group = get<GroupWithDetails>(
+export async function getGroupWithDetailsById(id: number): Promise<GroupWithDetails | null> {
+  const group = await get<GroupWithDetails>(
     `SELECT g.*, c.title as course_title, u.name as teacher_name,
       (SELECT COUNT(*) FROM student_groups sg WHERE sg.group_id = g.id AND sg.is_active = 1) as students_count
      FROM groups g
      JOIN courses c ON g.course_id = c.id
      JOIN users u ON g.teacher_id = u.id
-     WHERE g.id = ?`,
+     WHERE g.id = $1`,
     [id]
   );
   
@@ -183,14 +183,14 @@ export function getGroupWithDetailsById(id: number): GroupWithDetails | null {
 }
 
 // Get groups filtered by course, teacher, status, days of week
-export function getGroupsFiltered(filters: {
+export async function getGroupsFiltered(filters: {
   courseId?: number;
   teacherId?: number;
   status?: GroupStatus;
   search?: string;
   includeInactive?: boolean;
   days?: number[];
-}): GroupWithDetails[] {
+}): Promise<GroupWithDetails[]> {
   let sql = `SELECT g.*, c.title as course_title, u.name as teacher_name,
     (SELECT COUNT(*) FROM student_groups sg WHERE sg.group_id = g.id AND sg.is_active = 1) as students_count
     FROM groups g
@@ -199,40 +199,42 @@ export function getGroupsFiltered(filters: {
     WHERE 1=1`;
   
   const params: any[] = [];
+  let paramIndex = 1;
   
   if (!filters.includeInactive) {
     sql += ` AND g.is_active = 1`;
   }
   
   if (filters.courseId) {
-    sql += ` AND g.course_id = ?`;
+    sql += ` AND g.course_id = $${paramIndex++}`;
     params.push(filters.courseId);
   }
   
   if (filters.teacherId) {
-    sql += ` AND g.teacher_id = ?`;
+    sql += ` AND g.teacher_id = $${paramIndex++}`;
     params.push(filters.teacherId);
   }
   
   if (filters.status) {
-    sql += ` AND g.status = ?`;
+    sql += ` AND g.status = $${paramIndex++}`;
     params.push(filters.status);
   }
   
   if (filters.days && filters.days.length > 0) {
-    sql += ` AND g.weekly_day IN (${filters.days.map(() => '?').join(',')})`;
+    sql += ` AND g.weekly_day IN (${filters.days.map(() => `$${paramIndex++}`).join(',')})`;
     params.push(...filters.days);
   }
   
   if (filters.search) {
-    sql += ` AND (g.title LIKE ? OR c.title LIKE ?)`;
+    sql += ` AND (g.title LIKE $${paramIndex} OR c.title LIKE $${paramIndex})`;
     const searchTerm = `%${filters.search}%`;
-    params.push(searchTerm, searchTerm);
+    params.push(searchTerm);
+    paramIndex++;
   }
   
   sql += ` ORDER BY g.created_at DESC`;
   
-  return all<GroupWithDetails>(sql, params);
+  return await all<GroupWithDetails>(sql, params);
 }
 
 // Create group input interface
@@ -254,20 +256,20 @@ export interface CreateGroupInput {
 }
 
 // Check if public_id is unique for groups
-function isPublicIdUnique(publicId: string): boolean {
-  const existing = get<{ id: number }>(
-    `SELECT id FROM groups WHERE public_id = ?`,
+async function isPublicIdUnique(publicId: string): Promise<boolean> {
+  const existing = await get<{ id: number }>(
+    `SELECT id FROM groups WHERE public_id = $1`,
     [publicId]
   );
   return !existing;
 }
 
 // Create group
-export function createGroup(input: CreateGroupInput): { id: number; public_id: string } {
-  const publicId = generateUniquePublicId('group', isPublicIdUnique);
-  const result = run(
+export async function createGroup(input: CreateGroupInput): Promise<{ id: number; public_id: string }> {
+  const publicId = await generateUniquePublicId('group', isPublicIdUnique);
+  const result = await run(
     `INSERT INTO groups (public_id, course_id, title, teacher_id, weekly_day, start_time, duration_minutes, timezone, start_date, end_date, capacity, monthly_price, status, note, photos_folder_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
     [
       publicId,
       input.course_id,
@@ -287,7 +289,7 @@ export function createGroup(input: CreateGroupInput): { id: number; public_id: s
     ]
   );
   
-  return { id: Number(result.lastInsertRowid), public_id: publicId };
+  return { id: Number(result[0]?.id), public_id: publicId };
 }
 
 // Update group input interface
@@ -309,25 +311,25 @@ export interface UpdateGroupInput {
 }
 
 // Update group
-export function updateGroup(id: number, input: UpdateGroupInput): void {
-  run(
+export async function updateGroup(id: number, input: UpdateGroupInput): Promise<void> {
+  await run(
     `UPDATE groups SET 
-      course_id = ?, 
-      title = ?, 
-      teacher_id = ?, 
-      weekly_day = ?, 
-      start_time = ?, 
-      duration_minutes = ?, 
-      timezone = ?, 
-      start_date = ?, 
-      end_date = ?, 
-      capacity = ?, 
-      monthly_price = ?, 
-      status = ?, 
-      note = ?, 
-      photos_folder_url = ?, 
+      course_id = $1, 
+      title = $2, 
+      teacher_id = $3, 
+      weekly_day = $4, 
+      start_time = $5, 
+      duration_minutes = $6, 
+      timezone = $7, 
+      start_date = $8, 
+      end_date = $9, 
+      capacity = $10, 
+      monthly_price = $11, 
+      status = $12, 
+      note = $13, 
+      photos_folder_url = $14, 
       updated_at = CURRENT_TIMESTAMP 
-    WHERE id = ?`,
+    WHERE id = $15`,
     [
       input.course_id,
       input.title.trim(),
@@ -349,45 +351,45 @@ export function updateGroup(id: number, input: UpdateGroupInput): void {
 }
 
 // Update group status
-export function updateGroupStatus(id: number, status: GroupStatus): void {
-  run(
-    `UPDATE groups SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+export async function updateGroupStatus(id: number, status: GroupStatus): Promise<void> {
+  await run(
+    `UPDATE groups SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
     [status, id]
   );
 }
 
 // Archive group - set status to inactive
-export function archiveGroup(id: number): void {
-  run(`UPDATE groups SET status = 'inactive', is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+export async function archiveGroup(id: number): Promise<void> {
+  await run(`UPDATE groups SET status = 'inactive', is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
 }
 
 // Restore group - set status to active
-export function restoreGroup(id: number): void {
-  run(`UPDATE groups SET status = 'active', is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+export async function restoreGroup(id: number): Promise<void> {
+  await run(`UPDATE groups SET status = 'active', is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
 }
 
 // Delete group permanently (only if no students, lessons, payments)
-export function deleteGroup(id: number): { success: boolean; error?: string } {
+export async function deleteGroup(id: number): Promise<{ success: boolean; error?: string }> {
   // Check if group has students
-  const students = all<{ id: number }>(`SELECT id FROM student_groups WHERE group_id = ?`, [id]);
+  const students = await all<{ id: number }>(`SELECT id FROM student_groups WHERE group_id = $1`, [id]);
   if (students.length > 0) {
     return { success: false, error: 'Неможливо видалити групу: є прив\'язані учні' };
   }
   
   // Check if group has lessons
-  const lessons = all<{ id: number }>(`SELECT id FROM lessons WHERE group_id = ?`, [id]);
+  const lessons = await all<{ id: number }>(`SELECT id FROM lessons WHERE group_id = $1`, [id]);
   if (lessons.length > 0) {
     return { success: false, error: 'Неможливо видалити групу: є прив\'язані заняття' };
   }
   
   // Check if group has payments
-  const payments = all<{ id: number }>(`SELECT id FROM payments WHERE group_id = ?`, [id]);
+  const payments = await all<{ id: number }>(`SELECT id FROM payments WHERE group_id = $1`, [id]);
   if (payments.length > 0) {
     return { success: false, error: 'Неможливо видалити групу: є прив\'язані платежі' };
   }
   
   // Delete the group
-  run(`DELETE FROM groups WHERE id = ?`, [id]);
+  await run(`DELETE FROM groups WHERE id = $1`, [id]);
   return { success: true };
 }
 
@@ -399,24 +401,24 @@ export interface GroupDeletionCheck {
   payments: { id: number; amount: number; date: string }[];
 }
 
-export function checkGroupDeletion(id: number): GroupDeletionCheck {
+export async function checkGroupDeletion(id: number): Promise<GroupDeletionCheck> {
   // Get students in group
-  const students = all<{ id: number; full_name: string }>(
+  const students = await all<{ id: number; full_name: string }>(
     `SELECT s.id, s.full_name FROM students s 
      JOIN student_groups sg ON s.id = sg.student_id 
-     WHERE sg.group_id = ? AND sg.is_active = 1`,
+     WHERE sg.group_id = $1 AND sg.is_active = 1`,
     [id]
   );
   
   // Get lessons in group
-  const lessons = all<{ id: number; date: string }>(
-    `SELECT id, date FROM lessons WHERE group_id = ?`,
+  const lessons = await all<{ id: number; date: string }>(
+    `SELECT id, date FROM lessons WHERE group_id = $1`,
     [id]
   );
   
   // Get payments in group
-  const payments = all<{ id: number; amount: number; date: string }>(
-    `SELECT id, amount, date FROM payments WHERE group_id = ?`,
+  const payments = await all<{ id: number; amount: number; date: string }>(
+    `SELECT id, amount, date FROM payments WHERE group_id = $1`,
     [id]
   );
   
@@ -429,7 +431,7 @@ export function checkGroupDeletion(id: number): GroupDeletionCheck {
 }
 
 // Get students in group
-export function getStudentsInGroup(groupId: number): Array<{
+export async function getStudentsInGroup(groupId: number): Promise<Array<{
   id: number;
   public_id: string;
   full_name: string;
@@ -439,8 +441,8 @@ export function getStudentsInGroup(groupId: number): Array<{
   join_date: string;
   student_group_id: number;
   photo: string | null;
-}> {
-  return all<{
+}>> {
+  return await all<{
     id: number;
     public_id: string;
     full_name: string;
@@ -454,71 +456,71 @@ export function getStudentsInGroup(groupId: number): Array<{
     `SELECT s.id, s.public_id, s.full_name, s.phone, s.parent_name, s.parent_phone, sg.join_date, sg.id as student_group_id, s.photo
      FROM students s
      JOIN student_groups sg ON s.id = sg.student_id
-     WHERE sg.group_id = ? AND sg.is_active = 1
+     WHERE sg.group_id = $1 AND sg.is_active = 1
      ORDER BY s.full_name`,
     [groupId]
   );
 }
 
 // Add student to group
-export function addStudentToGroup(studentId: number, groupId: number, joinDate?: string): number {
-  const result = run(
-    `INSERT INTO student_groups (student_id, group_id, join_date) VALUES (?, ?, ?)`,
+export async function addStudentToGroup(studentId: number, groupId: number, joinDate?: string): Promise<number> {
+  const result = await run(
+    `INSERT INTO student_groups (student_id, group_id, join_date) VALUES ($1, $2, $3) RETURNING id`,
     [studentId, groupId, joinDate || new Date().toISOString().split('T')[0]]
   );
   
-  return Number(result.lastInsertRowid);
+  return Number(result[0]?.id);
 }
 
 // Remove student from group
-export function removeStudentFromGroup(studentGroupId: number): void {
-  run(
-    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+export async function removeStudentFromGroup(studentGroupId: number): Promise<void> {
+  await run(
+    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
     [studentGroupId]
   );
 }
 
 // Remove student from group by student and group IDs
-export function removeStudentFromGroupByIDs(studentId: number, groupId: number): void {
-  run(
-    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP WHERE student_id = ? AND group_id = ? AND is_active = 1`,
+export async function removeStudentFromGroupByIDs(studentId: number, groupId: number): Promise<void> {
+  await run(
+    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP WHERE student_id = $1 AND group_id = $2 AND is_active = 1`,
     [studentId, groupId]
   );
 }
 
 // Check if student is in group
-export function isStudentInGroup(studentId: number, groupId: number): boolean {
-  const result = get<{ count: number }>(
-    `SELECT COUNT(*) as count FROM student_groups WHERE student_id = ? AND group_id = ? AND is_active = 1`,
+export async function isStudentInGroup(studentId: number, groupId: number): Promise<boolean> {
+  const result = await get<{ count: number }>(
+    `SELECT COUNT(*) as count FROM student_groups WHERE student_id = $1 AND group_id = $2 AND is_active = 1`,
     [studentId, groupId]
   );
   return (result?.count || 0) > 0;
 }
 
 // Check if student was ever in group (including inactive)
-export function wasStudentInGroup(studentId: number, groupId: number): boolean {
-  const result = get<{ count: number }>(
-    `SELECT COUNT(*) as count FROM student_groups WHERE student_id = ? AND group_id = ?`,
+export async function wasStudentInGroup(studentId: number, groupId: number): Promise<boolean> {
+  const result = await get<{ count: number }>(
+    `SELECT COUNT(*) as count FROM student_groups WHERE student_id = $1 AND group_id = $2`,
     [studentId, groupId]
   );
   return (result?.count || 0) > 0;
 }
 
 // Reactivate student in group (when they were removed before)
-export function reactivateStudentInGroup(studentId: number, groupId: number, joinDate?: string): number {
-  run(
-    `UPDATE student_groups SET is_active = 1, join_date = ?, leave_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE student_id = ? AND group_id = ? AND is_active = 0`,
+export async function reactivateStudentInGroup(studentId: number, groupId: number, joinDate?: string): Promise<number> {
+  await run(
+    `UPDATE student_groups SET is_active = 1, join_date = $1, leave_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE student_id = $2 AND group_id = $3 AND is_active = 0`,
     [joinDate || new Date().toISOString().split('T')[0], studentId, groupId]
   );
   
-  const result = get<{ id: number }>(
-    `SELECT id FROM student_groups WHERE student_id = ? AND group_id = ? AND is_active = 1`,
+  const result = await get<{ id: number }>(
+    `SELECT id FROM student_groups WHERE student_id = $1 AND group_id = $2 AND is_active = 1`,
     [studentId, groupId]
   );
   return result?.id || 0;
 }
 
 // Search groups
-export function searchGroups(query: string, includeInactive: boolean = false): GroupWithDetails[] {
-  return getGroupsFiltered({ search: query, includeInactive });
+export async function searchGroups(query: string, includeInactive: boolean = false): Promise<GroupWithDetails[]> {
+  return await getGroupsFiltered({ search: query, includeInactive });
 }

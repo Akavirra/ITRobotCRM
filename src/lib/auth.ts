@@ -38,11 +38,11 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 // Create session
-export function createSession(userId: number): string {
+export async function createSession(userId: number): Promise<string> {
   const sessionId = uuidv4();
   const expiresAt = new Date(Date.now() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
   
-  run(
+  await run(
     `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`,
     [sessionId, userId, expiresAt.toISOString()]
   );
@@ -51,8 +51,8 @@ export function createSession(userId: number): string {
 }
 
 // Get session
-export function getSession(sessionId: string): Session | null {
-  const session = get<Session>(
+export async function getSession(sessionId: string): Promise<Session | null> {
+  const session = await get<Session>(
     `SELECT * FROM sessions WHERE id = ? AND expires_at > datetime('now')`,
     [sessionId]
   );
@@ -61,18 +61,18 @@ export function getSession(sessionId: string): Session | null {
 }
 
 // Delete session
-export function deleteSession(sessionId: string): void {
-  run(`DELETE FROM sessions WHERE id = ?`, [sessionId]);
+export async function deleteSession(sessionId: string): Promise<void> {
+  await run(`DELETE FROM sessions WHERE id = ?`, [sessionId]);
 }
 
 // Clean expired sessions
-export function cleanExpiredSessions(): void {
-  run(`DELETE FROM sessions WHERE expires_at < datetime('now')`);
+export async function cleanExpiredSessions(): Promise<void> {
+  await run(`DELETE FROM sessions WHERE expires_at < datetime('now')`);
 }
 
 // Get user by email
-export function getUserByEmail(email: string): User | null {
-  const user = get<User>(
+export async function getUserByEmail(email: string): Promise<User | null> {
+  const user = await get<User>(
     `SELECT * FROM users WHERE email = ?`,
     [email]
   );
@@ -81,8 +81,8 @@ export function getUserByEmail(email: string): User | null {
 }
 
 // Get user by ID
-export function getUserById(id: number): User | null {
-  const user = get<User>(
+export async function getUserById(id: number): Promise<User | null> {
+  const user = await get<User>(
     `SELECT * FROM users WHERE id = ?`,
     [id]
   );
@@ -92,7 +92,7 @@ export function getUserById(id: number): User | null {
 
 // Login - Only admin role is allowed to login
 export async function login(email: string, password: string): Promise<{ user: User; sessionId: string } | null> {
-  const user = getUserByEmail(email);
+  const user = await getUserByEmail(email);
   
   if (!user || !user.is_active) {
     return null;
@@ -100,10 +100,10 @@ export async function login(email: string, password: string): Promise<{ user: Us
   
   // Only allow admin role to login
   if (user.role !== 'admin') {
-    return null;
+    throw new Error('Доступ заборонено. Тільки адміністратори можуть увійти.');
   }
   
-  const userWithPassword = get<{ password_hash: string }>(
+  const userWithPassword = await get<{ password_hash: string }>(
     `SELECT password_hash FROM users WHERE id = ?`,
     [user.id]
   );
@@ -118,14 +118,14 @@ export async function login(email: string, password: string): Promise<{ user: Us
     return null;
   }
   
-  const sessionId = createSession(user.id);
+  const sessionId = await createSession(user.id);
   
   return { user, sessionId };
 }
 
 // Logout
-export function logout(sessionId: string): void {
-  deleteSession(sessionId);
+export async function logout(sessionId: string): Promise<void> {
+  await deleteSession(sessionId);
 }
 
 // Create JWT token (alternative to session-based auth)
@@ -148,12 +148,12 @@ export function verifyToken(token: string): { userId: number; role: string } | n
 }
 
 // Check if user has access to group (for teachers)
-export function userHasGroupAccess(userId: number, groupId: number, userRole: string): boolean {
+export async function userHasGroupAccess(userId: number, groupId: number, userRole: string): Promise<boolean> {
   if (userRole === 'admin') {
     return true;
   }
   
-  const group = get<{ teacher_id: number }>(
+  const group = await get<{ teacher_id: number }>(
     `SELECT teacher_id FROM groups WHERE id = ?`,
     [groupId]
   );
@@ -162,13 +162,13 @@ export function userHasGroupAccess(userId: number, groupId: number, userRole: st
 }
 
 // Get groups accessible by user
-export function getAccessibleGroups(userId: number, userRole: string): number[] {
+export async function getAccessibleGroups(userId: number, userRole: string): Promise<number[]> {
   if (userRole === 'admin') {
-    const groups = all<{ id: number }>(`SELECT id FROM groups WHERE is_active = 1`);
+    const groups = await all<{ id: number }>(`SELECT id FROM groups WHERE is_active = 1`);
     return groups.map(g => g.id);
   }
   
-  const groups = all<{ id: number }>(
+  const groups = await all<{ id: number }>(
     `SELECT id FROM groups WHERE teacher_id = ? AND is_active = 1`,
     [userId]
   );

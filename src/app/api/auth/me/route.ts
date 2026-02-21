@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     
     if (!session) {
       const response = NextResponse.json(
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       return response;
     }
     
-    const user = getUserById(session.user_id);
+    const user = await getUserById(session.user_id);
     
     if (!user) {
       return NextResponse.json(

@@ -15,7 +15,8 @@ import {
   Clock,
   Globe,
   Save,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 
 interface User {
@@ -33,6 +34,17 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [saved, setSaved] = useState(false);
+
+  // Password change modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   // Settings state
   const [settings, setSettings] = useState({
@@ -81,12 +93,69 @@ export default function SettingsPage() {
   }, [router]);
 
   const handleSave = async () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      if (!res.ok) throw new Error('Помилка збереження');
+      
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      alert('Помилка збереження налаштувань');
+    }
   };
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setSettings(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handlePasswordChange = async () => {
+    setPasswordError('');
+    
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordError('Новий пароль повинен містити мінімум 8 символів');
+      return;
+    }
+    
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('Паролі не співпадають');
+      return;
+    }
+    
+    setPasswordLoading(true);
+    
+    try {
+      const res = await fetch('/api/settings/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          currentPassword: passwordForm.currentPassword, 
+          newPassword: passwordForm.newPassword 
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        setPasswordError(data.error || 'Помилка зміни пароля');
+        return;
+      }
+      
+      setPasswordSuccess(true);
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setPasswordSuccess(false);
+      }, 2000);
+    } catch (error) {
+      setPasswordError('Помилка зміни пароля');
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   if (loading) {
@@ -361,6 +430,7 @@ export default function SettingsPage() {
                     <button 
                       className="btn btn-secondary"
                       style={{ marginTop: '0.5rem' }}
+                      onClick={() => setShowPasswordModal(true)}
                     >
                       Змінити пароль
                     </button>
@@ -720,6 +790,132 @@ export default function SettingsPage() {
           }
         }
       `}</style>
+
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '420px', margin: '1rem' }}>
+            <div className="card-header" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              padding: '1rem 1.5rem'
+            }}>
+              <h3 className="card-title" style={{ margin: 0 }}>Зміна пароля</h3>
+              <button 
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                  setPasswordError('');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '0.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X size={20} color="#6b7280" />
+              </button>
+            </div>
+            <div className="card-body" style={{ padding: '1.5rem' }}>
+              {passwordSuccess ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '2rem 0',
+                  color: '#22c55e'
+                }}>
+                  <Shield size={48} style={{ marginBottom: '1rem' }} />
+                  <p style={{ fontSize: '1.125rem', fontWeight: '600' }}>Пароль успішно змінено!</p>
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Поточний пароль</label>
+                    <input 
+                      type="password" 
+                      className="form-input"
+                      value={passwordForm.currentPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                      placeholder="Введіть поточний пароль"
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label className="form-label">Новий пароль</label>
+                    <input 
+                      type="password" 
+                      className="form-input"
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                      placeholder="Мінімум 8 символів"
+                    />
+                    <span className="form-hint">Мінімум 8 символів</span>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label className="form-label">Підтвердження пароля</label>
+                    <input 
+                      type="password" 
+                      className="form-input"
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                      placeholder="Повторіть новий пароль"
+                    />
+                  </div>
+                  
+                  {passwordError && (
+                    <div style={{
+                      padding: '0.75rem',
+                      marginBottom: '1rem',
+                      backgroundColor: '#fee2e2',
+                      color: '#991b1b',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                    }}>
+                      {passwordError}
+                    </div>
+                  )}
+                  
+                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowPasswordModal(false);
+                        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                        setPasswordError('');
+                      }}
+                    >
+                      Скасувати
+                    </button>
+                    <button 
+                      className="btn btn-primary"
+                      onClick={handlePasswordChange}
+                      disabled={passwordLoading || !passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword}
+                    >
+                      {passwordLoading ? 'Збереження...' : 'Змінити пароль'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

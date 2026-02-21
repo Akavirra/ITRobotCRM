@@ -37,7 +37,7 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const month = searchParams.get('month') || new Date().toISOString().substring(0, 7) + '-01';
   
-  const paymentStatus = getPaymentStatusForGroupMonth(groupId, month);
+  const paymentStatus = await getPaymentStatusForGroupMonth(groupId, month);
   
   return NextResponse.json({ paymentStatus });
 }
@@ -74,7 +74,7 @@ export async function POST(
       );
     }
     
-    const paymentId = createPayment(
+    const paymentId = await createPayment(
       parseInt(student_id),
       groupId,
       month,
@@ -130,7 +130,7 @@ export async function PUT(
       );
     }
     
-    updatePayment(parseInt(payment_id), parseInt(amount), method, note, paid_at);
+    await updatePayment(parseInt(payment_id), parseInt(amount), method, note, paid_at);
     
     return NextResponse.json({ message: 'Оплату успішно оновлено' });
   } catch (error) {
@@ -173,7 +173,7 @@ export async function DELETE(
     );
   }
   
-  deletePayment(parseInt(paymentId));
+  await deletePayment(parseInt(paymentId));
   
   return NextResponse.json({ message: 'Оплату успішно видалено' });
 }

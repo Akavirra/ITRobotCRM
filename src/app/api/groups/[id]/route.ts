@@ -68,16 +68,16 @@ export async function GET(
       return forbidden();
     }
     
-    const group = getGroupById(groupId);
+    const group = await getGroupById(groupId);
     if (!group) {
       return notFound(ERROR_MESSAGES.groupNotFound);
     }
     
-    const deletionCheck = checkGroupDeletion(groupId);
+    const deletionCheck = await checkGroupDeletion(groupId);
     return NextResponse.json(deletionCheck);
   }
   
-  const group = getGroupWithDetailsById(groupId);
+  const group = await getGroupWithDetailsById(groupId);
   
   if (!group) {
     return notFound(ERROR_MESSAGES.groupNotFound);
@@ -86,7 +86,7 @@ export async function GET(
   // Add students if requested
   const responseData: any = { group };
   if (withStudents) {
-    responseData.students = getStudentsInGroup(groupId);
+    responseData.students = await getStudentsInGroup(groupId);
   }
   
   return NextResponse.json(responseData);
@@ -113,7 +113,7 @@ export async function PUT(
     return NextResponse.json({ error: ERROR_MESSAGES.invalidGroupId }, { status: 400 });
   }
   
-  const existingGroup = getGroupById(groupId);
+  const existingGroup = await getGroupById(groupId);
   
   if (!existingGroup) {
     return notFound(ERROR_MESSAGES.groupNotFound);
@@ -213,7 +213,7 @@ export async function PUT(
     }
     
     // Get course to generate title
-    const course = getCourseById(parseInt(course_id));
+    const course = await getCourseById(parseInt(course_id));
     if (!course) {
       return NextResponse.json(
         { error: ERROR_MESSAGES.courseNotFound },
@@ -247,15 +247,15 @@ export async function PUT(
     updateGroup(groupId, input);
     
     // Get updated group with details
-    const updatedGroup = getGroupWithDetailsById(groupId);
+    const updatedGroup = await getGroupWithDetailsById(groupId);
     
     // Add history entry for group edit - check for teacher change and other fields
     const changes: string[] = [];
     
     // Check if teacher changed
     if (existingGroup.teacher_id !== parseInt(teacher_id)) {
-      const oldTeacher = get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [existingGroup.teacher_id]);
-      const newTeacher = get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [parseInt(teacher_id)]);
+      const oldTeacher = await get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [existingGroup.teacher_id]);
+      const newTeacher = await get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [parseInt(teacher_id)]);
       if (oldTeacher && newTeacher) {
         addGroupHistoryEntry(
           groupId,
@@ -271,8 +271,8 @@ export async function PUT(
     
     // Check other field changes
     if (existingGroup.course_id !== parseInt(course_id)) {
-      const oldCourse = get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [existingGroup.course_id]);
-      const newCourse = get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [parseInt(course_id)]);
+      const oldCourse = await get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [existingGroup.course_id]);
+      const newCourse = await get<{ title: string }>(`SELECT title FROM courses WHERE id = ?`, [parseInt(course_id)]);
       if (oldCourse && newCourse) {
         addGroupHistoryEntry(
           groupId,
@@ -367,7 +367,7 @@ export async function DELETE(
       return NextResponse.json({ error: ERROR_MESSAGES.invalidGroupId }, { status: 400 });
     }
     
-    const existingGroup = getGroupById(groupId);
+    const existingGroup = await getGroupById(groupId);
     
     if (!existingGroup) {
       return notFound(ERROR_MESSAGES.groupNotFound);
@@ -395,7 +395,7 @@ export async function DELETE(
     }
     
     // Get user's password hash from database
-    const userWithPassword = get<{ password_hash: string }>(
+    const userWithPassword = await get<{ password_hash: string }>(
       `SELECT password_hash FROM users WHERE id = ?`,
       [user.id]
     );
@@ -412,7 +412,7 @@ export async function DELETE(
     }
     
     // Delete the group
-    const deleteResult = deleteGroup(groupId);
+    const deleteResult = await deleteGroup(groupId);
     
     if (!deleteResult.success) {
       return NextResponse.json({ error: deleteResult.error }, { status: 409 });

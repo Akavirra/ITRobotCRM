@@ -22,14 +22,14 @@ interface Lesson {
 }
 
 // Generate lessons for a group
-export function generateLessonsForGroup(
+export async function generateLessonsForGroup(
   groupId: number,
   weeksAhead: number = 8,
   createdBy: number
-): { generated: number; skipped: number } {
-  const group = get<Group>(
+): Promise<{ generated: number; skipped: number }> {
+  const group = await get<Group>(
     `SELECT id, weekly_day, start_time, duration_minutes, timezone, start_date, end_date 
-     FROM groups WHERE id = ?`,
+     FROM groups WHERE id = $1`,
     [groupId]
   );
   
@@ -45,8 +45,8 @@ export function generateLessonsForGroup(
   const finalEndDate = group.end_date && isBefore(endDate, targetEndDate) ? endDate : targetEndDate;
   
   // Get existing lessons for this group
-  const existingLessons = all<{ lesson_date: string }>(
-    `SELECT lesson_date FROM lessons WHERE group_id = ?`,
+  const existingLessons = await all<{ lesson_date: string }>(
+    `SELECT lesson_date FROM lessons WHERE group_id = $1`,
     [groupId]
   );
   const existingDates = new Set(existingLessons.map(l => l.lesson_date));
@@ -93,18 +93,12 @@ export function generateLessonsForGroup(
   
   // Insert all lessons in a transaction
   if (lessonsToInsert.length > 0) {
-    transaction(() => {
-      const stmt = run(
-        `INSERT INTO lessons (group_id, lesson_date, start_datetime, end_datetime, status, created_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        lessonsToInsert[0]
-      );
-      
-      for (let i = 1; i < lessonsToInsert.length; i++) {
-        run(
+    await transaction(async () => {
+      for (const lesson of lessonsToInsert) {
+        await run(
           `INSERT INTO lessons (group_id, lesson_date, start_datetime, end_datetime, status, created_by)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          lessonsToInsert[i]
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          lesson
         );
       }
     });
@@ -114,18 +108,18 @@ export function generateLessonsForGroup(
 }
 
 // Generate lessons for all active groups
-export function generateLessonsForAllGroups(
+export async function generateLessonsForAllGroups(
   weeksAhead: number = 8,
   createdBy: number
-): { groupId: number; generated: number; skipped: number }[] {
-  const groups = all<{ id: number }>(
+): Promise<{ groupId: number; generated: number; skipped: number }[]> {
+  const groups = await all<{ id: number }>(
     `SELECT id FROM groups WHERE is_active = 1`
   );
   
   const results: { groupId: number; generated: number; skipped: number }[] = [];
   
   for (const group of groups) {
-    const result = generateLessonsForGroup(group.id, weeksAhead, createdBy);
+    const result = await generateLessonsForGroup(group.id, weeksAhead, createdBy);
     results.push({ groupId: group.id, ...result });
   }
   
@@ -133,49 +127,50 @@ export function generateLessonsForAllGroups(
 }
 
 // Get lessons for a group within a date range
-export function getLessonsForGroup(
+export async function getLessonsForGroup(
   groupId: number,
   startDate?: string,
   endDate?: string
-): Lesson[] {
-  let sql = `SELECT * FROM lessons WHERE group_id = ?`;
+): Promise<Lesson[]> {
+  let sql = `SELECT * FROM lessons WHERE group_id = $1`;
   const params: (string | number)[] = [groupId];
+  let paramIndex = 2;
   
   if (startDate) {
-    sql += ` AND lesson_date >= ?`;
+    sql += ` AND lesson_date >= $${paramIndex++}`;
     params.push(startDate);
   }
   
   if (endDate) {
-    sql += ` AND lesson_date <= ?`;
+    sql += ` AND lesson_date <= $${paramIndex++}`;
     params.push(endDate);
   }
   
   sql += ` ORDER BY lesson_date ASC`;
   
-  return all<Lesson>(sql, params);
+  return await all<Lesson>(sql, params);
 }
 
 // Get upcoming lessons for a teacher
-export function getUpcomingLessonsForTeacher(
+export async function getUpcomingLessonsForTeacher(
   teacherId: number,
   limit: number = 10
-): Array<Lesson & { group_title: string; course_title: string }> {
-  return all<Lesson & { group_title: string; course_title: string }>(
+): Promise<Array<Lesson & { group_title: string; course_title: string }>> {
+  return await all<Lesson & { group_title: string; course_title: string }>(
     `SELECT l.*, g.title as group_title, c.title as course_title
      FROM lessons l
      JOIN groups g ON l.group_id = g.id
      JOIN courses c ON g.course_id = c.id
-     WHERE g.teacher_id = ? AND l.lesson_date >= date('now') AND l.status != 'canceled'
+     WHERE g.teacher_id = $1 AND l.lesson_date >= date('now') AND l.status != 'canceled'
      ORDER BY l.lesson_date ASC
-     LIMIT ?`,
+     LIMIT $2`,
     [teacherId, limit]
   );
 }
 
 // Get upcoming lessons for all groups (admin view)
-export function getUpcomingLessons(limit: number = 10): Array<Lesson & { group_title: string; course_title: string; teacher_name: string }> {
-  return all<Lesson & { group_title: string; course_title: string; teacher_name: string }>(
+export async function getUpcomingLessons(limit: number = 10): Promise<Array<Lesson & { group_title: string; course_title: string; teacher_name: string }>> {
+  return await all<Lesson & { group_title: string; course_title: string; teacher_name: string }>(
     `SELECT l.*, g.title as group_title, c.title as course_title, u.name as teacher_name
      FROM lessons l
      JOIN groups g ON l.group_id = g.id
@@ -183,31 +178,31 @@ export function getUpcomingLessons(limit: number = 10): Array<Lesson & { group_t
      JOIN users u ON g.teacher_id = u.id
      WHERE l.lesson_date >= date('now') AND l.status != 'canceled'
      ORDER BY l.lesson_date ASC
-     LIMIT ?`,
+     LIMIT $1`,
     [limit]
   );
 }
 
 // Cancel lesson
-export function cancelLesson(lessonId: number): void {
-  run(
-    `UPDATE lessons SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+export async function cancelLesson(lessonId: number): Promise<void> {
+  await run(
+    `UPDATE lessons SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
     [lessonId]
   );
 }
 
 // Update lesson topic
-export function updateLessonTopic(lessonId: number, topic: string): void {
-  run(
-    `UPDATE lessons SET topic = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+export async function updateLessonTopic(lessonId: number, topic: string): Promise<void> {
+  await run(
+    `UPDATE lessons SET topic = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
     [topic, lessonId]
   );
 }
 
 // Mark lesson as done
-export function markLessonDone(lessonId: number): void {
-  run(
-    `UPDATE lessons SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+export async function markLessonDone(lessonId: number): Promise<void> {
+  await run(
+    `UPDATE lessons SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
     [lessonId]
   );
 }

@@ -22,16 +22,16 @@ export interface CourseWithStats extends Course {
 }
 
 // Get all courses
-export function getCourses(includeInactive: boolean = false): Course[] {
+export async function getCourses(includeInactive: boolean = false): Promise<Course[]> {
   const sql = includeInactive
     ? `SELECT * FROM courses ORDER BY created_at DESC`
     : `SELECT * FROM courses WHERE is_active = 1 ORDER BY created_at DESC`;
   
-  return all<Course>(sql);
+  return await all<Course>(sql);
 }
 
 // Get courses with stats
-export function getCoursesWithStats(includeInactive: boolean = false): CourseWithStats[] {
+export async function getCoursesWithStats(includeInactive: boolean = false): Promise<CourseWithStats[]> {
   const sql = includeInactive
     ? `SELECT c.*, 
         COUNT(DISTINCT g.id) as groups_count,
@@ -51,100 +51,100 @@ export function getCoursesWithStats(includeInactive: boolean = false): CourseWit
        GROUP BY c.id
        ORDER BY c.created_at DESC`;
   
-  return all<CourseWithStats>(sql);
+  return await all<CourseWithStats>(sql);
 }
 
 // Get course by ID
-export function getCourseById(id: number): Course | null {
-  return get<Course>(`SELECT * FROM courses WHERE id = ?`, [id]) ?? null;
+export async function getCourseById(id: number): Promise<Course | null> {
+  return (await get<Course>(`SELECT * FROM courses WHERE id = $1`, [id])) ?? null;
 }
 
 // Check if public_id is unique for courses
-function isPublicIdUnique(publicId: string): boolean {
-  const existing = get<{ id: number }>(
-    `SELECT id FROM courses WHERE public_id = ?`,
+async function isPublicIdUnique(publicId: string): Promise<boolean> {
+  const existing = await get<{ id: number }>(
+    `SELECT id FROM courses WHERE public_id = $1`,
     [publicId]
   );
   return !existing;
 }
 
 // Create course
-export function createCourse(
+export async function createCourse(
   title: string,
   description?: string,
   ageMin?: number,
   durationMonths?: number,
   program?: string
-): { id: number; public_id: string } {
-  const publicId = generateUniquePublicId('course', isPublicIdUnique);
+): Promise<{ id: number; public_id: string }> {
+  const publicId = await generateUniquePublicId('course', isPublicIdUnique);
   
-  const result = run(
-    `INSERT INTO courses (public_id, title, description, age_min, duration_months, program) VALUES (?, ?, ?, ?, ?, ?)`,
+  const result = await run(
+    `INSERT INTO courses (public_id, title, description, age_min, duration_months, program) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
     [publicId, title, description || null, ageMin || 6, durationMonths || 1, program || null]
   );
   
-  return { id: Number(result.lastInsertRowid), public_id: publicId };
+  return { id: Number(result[0]?.id), public_id: publicId };
 }
 
 // Update course
-export function updateCourse(
+export async function updateCourse(
   id: number,
   title: string,
   description?: string,
   ageMin?: number,
   durationMonths?: number,
   program?: string
-): void {
-  run(
-    `UPDATE courses SET title = ?, description = ?, age_min = ?, duration_months = ?, program = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+): Promise<void> {
+  await run(
+    `UPDATE courses SET title = $1, description = $2, age_min = $3, duration_months = $4, program = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6`,
     [title, description || null, ageMin || 6, durationMonths || 1, program || null, id]
   );
 }
 
 // Archive course (soft delete)
-export function archiveCourse(id: number): void {
-  run(`UPDATE courses SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+export async function archiveCourse(id: number): Promise<void> {
+  await run(`UPDATE courses SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
 }
 
 // Restore course
-export function restoreCourse(id: number): void {
-  run(`UPDATE courses SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+export async function restoreCourse(id: number): Promise<void> {
+  await run(`UPDATE courses SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
 }
 
 // Delete course permanently (with cascade delete of groups)
-export function deleteCourse(id: number): boolean {
+export async function deleteCourse(id: number): Promise<boolean> {
   // First delete all groups for this course
   // This will cascade delete student_groups, lessons, payments, and pricing due to FK constraints
-  run(`DELETE FROM groups WHERE course_id = ?`, [id]);
+  await run(`DELETE FROM groups WHERE course_id = $1`, [id]);
   
   // Now delete the course
-  run(`DELETE FROM courses WHERE id = ?`, [id]);
+  await run(`DELETE FROM courses WHERE id = $1`, [id]);
   return true;
 }
 
 // Update course flyer path
-export function updateCourseFlyerPath(id: number, flyerPath: string | null): void {
-  run(
-    `UPDATE courses SET flyer_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+export async function updateCourseFlyerPath(id: number, flyerPath: string | null): Promise<void> {
+  await run(
+    `UPDATE courses SET flyer_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
     [flyerPath, id]
   );
 }
 
 // Get course flyer path
-export function getCourseFlyerPath(id: number): string | null {
-  const course = get<{ flyer_path: string | null }>(
-    `SELECT flyer_path FROM courses WHERE id = ?`,
+export async function getCourseFlyerPath(id: number): Promise<string | null> {
+  const course = await get<{ flyer_path: string | null }>(
+    `SELECT flyer_path FROM courses WHERE id = $1`,
     [id]
   );
   return course?.flyer_path ?? null;
 }
 
 // Search courses
-export function searchCourses(query: string, includeInactive: boolean = false): Course[] {
+export async function searchCourses(query: string, includeInactive: boolean = false): Promise<Course[]> {
   const searchTerm = `%${query}%`;
   const sql = includeInactive
-    ? `SELECT * FROM courses WHERE title LIKE ? OR description LIKE ? ORDER BY created_at DESC`
-    : `SELECT * FROM courses WHERE is_active = 1 AND (title LIKE ? OR description LIKE ?) ORDER BY created_at DESC`;
+    ? `SELECT * FROM courses WHERE title LIKE $1 OR description LIKE $2 ORDER BY created_at DESC`
+    : `SELECT * FROM courses WHERE is_active = 1 AND (title LIKE $1 OR description LIKE $2) ORDER BY created_at DESC`;
   
-  return all<Course>(sql, [searchTerm, searchTerm]);
+  return await all<Course>(sql, [searchTerm, searchTerm]);
 }

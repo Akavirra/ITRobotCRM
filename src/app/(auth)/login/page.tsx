@@ -119,7 +119,6 @@ export default function LoginPage() {
           }}>
             <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>{t('demo.title')}</p>
             <p>{t('demo.admin')}</p>
-            <p>{t('demo.teacher')}</p>
           </div>
         </div>
       </div>

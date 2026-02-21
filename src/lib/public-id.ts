@@ -80,22 +80,23 @@ export function validatePublicId(
  * Retries up to MAX_RETRIES times if the uniqueness check fails
  * 
  * @param entityType - 'student', 'group', or 'course'
- * @param isUniqueCheck - Function that returns true if the ID is unique (not in DB)
+ * @param isUniqueCheck - Function that returns true if the ID is unique (not in DB). Can be sync or async.
  * @param randomLength - Optional length of random part (8-10, defaults to 8)
  * @returns The generated unique public ID, or throws if max retries exceeded
  * @throws Error if unable to generate a unique ID after MAX_RETRIES attempts
  */
-export function generateUniquePublicId(
+export async function generateUniquePublicId(
   entityType: keyof typeof PUBLIC_ID_PREFIXES,
-  isUniqueCheck: (id: string) => boolean,
+  isUniqueCheck: (id: string) => boolean | Promise<boolean>,
   randomLength: number = DEFAULT_RANDOM_PART_LENGTH
-): string {
+): Promise<string> {
   let attempts = 0;
   
   while (attempts < MAX_RETRIES) {
     const publicId = generatePublicId(entityType, randomLength);
     
-    if (isUniqueCheck(publicId)) {
+    const isUnique = await Promise.resolve(isUniqueCheck(publicId));
+    if (isUnique) {
       return publicId;
     }
     

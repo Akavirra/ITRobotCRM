@@ -44,11 +44,11 @@ export async function GET(request: NextRequest) {
   let courses;
   
   if (search) {
-    courses = searchCourses(search, includeInactive);
+    courses = await searchCourses(search, includeInactive);
   } else if (withStats) {
-    courses = getCoursesWithStats(includeInactive);
+    courses = await getCoursesWithStats(includeInactive);
   } else {
-    courses = getCourses(includeInactive);
+    courses = await getCourses(includeInactive);
   }
   
   return NextResponse.json({ courses });
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const result = createCourse(
+    const result = await createCourse(
       title.trim(),
       description?.trim(),
       ageMinValue,

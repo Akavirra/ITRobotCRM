@@ -34,7 +34,7 @@ export async function GET(
   const withAttendance = searchParams.get('withAttendance') === 'true';
   const withPayments = searchParams.get('withPayments') === 'true';
   
-  const student = withGroups ? getStudentWithGroups(studentId) : getStudentById(studentId);
+  const student = withGroups ? await getStudentWithGroups(studentId) : await getStudentById(studentId);
   
   if (!student) {
     return notFound(ERROR_MESSAGES.studentNotFound);
@@ -43,11 +43,11 @@ export async function GET(
   const response: any = { student };
   
   if (withAttendance) {
-    response.attendanceHistory = getStudentAttendanceHistory(studentId);
+    response.attendanceHistory = await getStudentAttendanceHistory(studentId);
   }
   
   if (withPayments) {
-    response.paymentHistory = getStudentPaymentHistory(studentId);
+    response.paymentHistory = await getStudentPaymentHistory(studentId);
   }
   
   return NextResponse.json(response);
@@ -74,7 +74,7 @@ export async function PUT(
     return NextResponse.json({ error: ERROR_MESSAGES.invalidStudentId }, { status: 400 });
   }
   
-  const existingStudent = getStudentById(studentId);
+  const existingStudent = await getStudentById(studentId);
   
   if (!existingStudent) {
     return notFound(ERROR_MESSAGES.studentNotFound);
@@ -110,7 +110,7 @@ export async function PUT(
       );
     }
     
-    updateStudent(
+    await updateStudent(
       studentId,
       finalFullName,
       phone !== undefined ? phone?.trim() : existingStudent.phone,
@@ -160,7 +160,7 @@ export async function DELETE(
     return NextResponse.json({ error: ERROR_MESSAGES.invalidStudentId }, { status: 400 });
   }
   
-  const existingStudent = getStudentById(studentId);
+  const existingStudent = await getStudentById(studentId);
   
   if (!existingStudent) {
     return notFound(ERROR_MESSAGES.studentNotFound);
@@ -194,8 +194,8 @@ export async function DELETE(
     }
     
     // Get user's password hash from database
-    const userWithPassword = get<{ password_hash: string }>(
-      `SELECT password_hash FROM users WHERE id = ?`,
+    const userWithPassword = await get<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = $1`,
       [user.id]
     );
     
@@ -211,7 +211,7 @@ export async function DELETE(
     }
     
     // Perform force delete (bypasses group check)
-    const deleteResult = forceDeleteStudent(studentId, user.id);
+    const deleteResult = await forceDeleteStudent(studentId, user.id);
     
     if (!deleteResult.success) {
       return NextResponse.json({ error: deleteResult.error }, { status: 500 });
@@ -225,7 +225,7 @@ export async function DELETE(
   
   // Handle check for active groups before permanent delete
   if (permanent) {
-    const activeGroups = getStudentActiveGroups(studentId);
+    const activeGroups = await getStudentActiveGroups(studentId);
     
     if (activeGroups.length > 0) {
       // Return warning with list of groups
@@ -249,7 +249,7 @@ export async function DELETE(
   }
   
   // Default: archive the student
-  archiveStudent(studentId);
+  await archiveStudent(studentId);
   return NextResponse.json({ message: 'Учня успішно архівовано' });
 }
 
@@ -274,13 +274,13 @@ export async function PATCH(
     return NextResponse.json({ error: ERROR_MESSAGES.invalidStudentId }, { status: 400 });
   }
   
-  const existingStudent = getStudentById(studentId);
+  const existingStudent = await getStudentById(studentId);
   
   if (!existingStudent) {
     return notFound(ERROR_MESSAGES.studentNotFound);
   }
   
-  restoreStudent(studentId);
+  await restoreStudent(studentId);
   
   return NextResponse.json({ message: 'Учня успішно відновлено' });
 }

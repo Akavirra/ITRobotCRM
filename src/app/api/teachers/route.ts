@@ -3,6 +3,7 @@ import { getAuthUser, unauthorized, forbidden, badRequest } from '@/lib/api-util
 import { all, run, get } from '@/db';
 import { hashPassword } from '@/lib/auth';
 import { generatePublicId } from '@/lib/public-id';
+import { uploadImage } from '@/lib/cloudinary';
 
 // GET /api/teachers - список викладачів
 export async function GET(req: NextRequest) {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
       return unauthorized();
     }
 
-    const teachers = all(`
+    const teachers = await all(`
       SELECT 
         u.id, u.public_id, u.name, u.email, u.phone, u.telegram_id, 
         u.photo_url, u.notes, u.is_active, u.created_at,
@@ -23,14 +24,14 @@ export async function GET(req: NextRequest) {
     `);
 
     // Отримуємо групи для кожного викладача
-    const teachersWithGroups = teachers.map((teacher: any) => {
-      const groups = all(`
+    const teachersWithGroups = await Promise.all(teachers.map(async (teacher: any) => {
+      const groups = await all(`
         SELECT g.id, g.public_id, g.title, g.status, g.is_active,
                g.weekly_day, g.start_time,
                c.title as course_title
         FROM groups g
         LEFT JOIN courses c ON g.course_id = c.id
-        WHERE g.teacher_id = ? AND g.status = 'active'
+        WHERE g.teacher_id = $1 AND g.status = 'active'
         ORDER BY c.title ASC, g.weekly_day ASC, g.start_time ASC
       `, [teacher.id]);
       
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
         ...teacher,
         groups: groups || []
       };
-    });
+    }));
 
     return NextResponse.json(teachersWithGroups);
   } catch (error) {
@@ -75,39 +76,28 @@ export async function POST(req: NextRequest) {
     const maxRetries = 5;
     
     while (retries < maxRetries) {
-      const existing = get<{ id: number }>('SELECT id FROM users WHERE public_id = ?', [publicId]);
+      const existing = await get<{ id: number }>('SELECT id FROM users WHERE public_id = $1', [publicId]);
       if (!existing) break;
       publicId = generatePublicId('teacher');
       retries++;
     }
 
-    // Handle photo - save to file system if base64
+    // Handle photo - upload to Cloudinary if base64
     let photoUrl = null;
     if (photo && photo.startsWith('data:')) {
-      // Save photo to uploads folder
-      const fs = require('fs');
-      const path = require('path');
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'teacher-photos');
-      
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      
-      const base64Data = photo.replace(/^data:image\/\w+;base64,/, '');
-      const fileName = `teacher-${publicId}-${Date.now()}.jpg`;
-      const filePath = path.join(uploadsDir, fileName);
-      
-      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
-      photoUrl = `/uploads/teacher-photos/${fileName}`;
+      // Upload photo to Cloudinary
+      const uploadResult = await uploadImage(photo, 'teachers');
+      photoUrl = uploadResult.url;
     }
     
-    const result = run(`
+    const result = await run(`
       INSERT INTO users (public_id, name, email, password_hash, role, phone, telegram_id, notes, photo_url, is_active)
-      VALUES (?, ?, ?, ?, 'teacher', ?, ?, ?, ?, 1)
+      VALUES ($1, $2, $3, $4, 'teacher', $5, $6, $7, $8, 1)
+      RETURNING id
     `, [publicId, name, email, hashedPassword, phone || null, telegram_id || null, notes || null, photoUrl]);
 
     return NextResponse.json({ 
-      id: result.lastInsertRowid, 
+      id: result[0]?.id, 
       public_id: publicId, 
       name, 
       email,

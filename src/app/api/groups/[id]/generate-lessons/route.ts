@@ -36,7 +36,7 @@ export async function POST(
     const body = await request.json();
     const weeksAhead = body.weeksAhead || 8;
     
-    const result = generateLessonsForGroup(groupId, weeksAhead, user.id);
+    const result = await generateLessonsForGroup(groupId, weeksAhead, user.id);
     
     return NextResponse.json({
       message: 'Заняття успішно згенеровано',

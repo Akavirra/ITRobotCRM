@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser, unauthorized, isAdmin, forbidden, notFound, badRequest } from '@/lib/api-utils';
 import { get, all, run } from '@/db';
 import { hashPassword, verifyPassword } from '@/lib/auth';
+import { uploadImage, deleteImage, getPublicIdFromUrl } from '@/lib/cloudinary';
 
 // Ukrainian error messages
 const ERROR_MESSAGES = {
@@ -22,7 +23,7 @@ export async function GET(
     return unauthorized();
   }
   
-  const teacher = get<{
+  const teacher = await get<{
     id: number;
     public_id: string | null;
     name: string;
@@ -36,7 +37,7 @@ export async function GET(
   }>(
     `SELECT id, public_id, name, email, phone, telegram_id, photo_url, notes, is_active, created_at
      FROM users
-     WHERE id = ? AND role = 'teacher'`,
+     WHERE id = $1 AND role = 'teacher'`,
     [params.id]
   );
   
@@ -45,7 +46,7 @@ export async function GET(
   }
   
   // Get teacher's groups
-  const groups = all<{
+  const groups = await all<{
     id: number;
     public_id: string;
     title: string;
@@ -59,7 +60,7 @@ export async function GET(
             c.title as course_title
      FROM groups g
      LEFT JOIN courses c ON g.course_id = c.id
-     WHERE g.teacher_id = ? AND g.is_active = 1
+     WHERE g.teacher_id = $1 AND g.is_active = 1
      ORDER BY g.weekly_day, g.start_time`,
     [params.id]
   );
@@ -91,8 +92,8 @@ export async function PUT(
     }
     
     // Check if teacher exists
-    const existingTeacher = get<{ id: number; public_id: string | null }>(
-      `SELECT id, public_id FROM users WHERE id = ? AND role = 'teacher'`,
+    const existingTeacher = await get<{ id: number; public_id: string | null }>(
+      `SELECT id, public_id FROM users WHERE id = $1 AND role = 'teacher'`,
       [params.id]
     );
     
@@ -100,25 +101,41 @@ export async function PUT(
       return notFound(ERROR_MESSAGES.teacherNotFound);
     }
     
-    // Handle photo - save to file system if base64
-    let photoUrl = null;
+    // Handle photo - upload to Cloudinary if base64
+    let photoUrl: string | null | undefined = undefined;
     if (photo && photo.startsWith('data:')) {
-      const fs = require('fs');
-      const path = require('path');
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'teacher-photos');
+      // Get existing photo URL to check if we need to delete old one
+      const existingTeacherWithPhoto = await get<{ photo_url: string | null }>(
+        `SELECT photo_url FROM users WHERE id = $1 AND role = 'teacher'`,
+        [params.id]
+      );
       
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
+      // If old photo exists and is a Cloudinary URL (starts with https), delete it
+      if (existingTeacherWithPhoto?.photo_url?.startsWith('https://')) {
+        const oldPublicId = getPublicIdFromUrl(existingTeacherWithPhoto.photo_url);
+        if (oldPublicId) {
+          await deleteImage(oldPublicId);
+        }
       }
       
-      const base64Data = photo.replace(/^data:image\/\w+;base64,/, '');
-      const fileName = `teacher-${existingTeacher.public_id || params.id}-${Date.now()}.jpg`;
-      const filePath = path.join(uploadsDir, fileName);
-      
-      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
-      photoUrl = `/uploads/teacher-photos/${fileName}`;
+      // Upload new photo to Cloudinary
+      const uploadResult = await uploadImage(photo, 'teachers');
+      photoUrl = uploadResult.url;
     } else if (photo === null) {
-      // Photo was removed - set to null
+      // Photo was removed - delete old Cloudinary photo if exists
+      const existingTeacherWithPhoto = await get<{ photo_url: string | null }>(
+        `SELECT photo_url FROM users WHERE id = $1 AND role = 'teacher'`,
+        [params.id]
+      );
+      
+      if (existingTeacherWithPhoto?.photo_url?.startsWith('https://')) {
+        const oldPublicId = getPublicIdFromUrl(existingTeacherWithPhoto.photo_url);
+        if (oldPublicId) {
+          await deleteImage(oldPublicId);
+        }
+      }
+      
+      // Set to null
       photoUrl = null;
     } else if (photo) {
       // Photo is a URL (unchanged)
@@ -127,18 +144,18 @@ export async function PUT(
     
     // Build update query
     let updateQuery = `UPDATE users
-     SET name = ?, email = ?, phone = ?, telegram_id = ?, notes = ?, updated_at = CURRENT_TIMESTAMP`;
-    let updateParams = [name.trim(), email.trim().toLowerCase(), phone || null, telegram_id || null, notes || null];
+     SET name = $1, email = $2, phone = $3, telegram_id = $4, notes = $5, updated_at = CURRENT_TIMESTAMP`;
+    let updateParams: (string | number | null)[] = [name.trim(), email.trim().toLowerCase(), phone || null, telegram_id || null, notes || null];
     
     if (photoUrl !== undefined) {
-      updateQuery += `, photo_url = ?`;
+      updateQuery += `, photo_url = $6`;
       updateParams.push(photoUrl);
     }
     
-    updateQuery += ` WHERE id = ? AND role = 'teacher'`;
+    updateQuery += ` WHERE id = $7 AND role = 'teacher'`;
     updateParams.push(params.id);
     
-    run(updateQuery, updateParams);
+    await run(updateQuery, updateParams);
     
     return NextResponse.json({ success: true, message: 'Дані викладача оновлено' });
   } catch (error: any) {
@@ -200,8 +217,8 @@ export async function DELETE(
     }
     
     // Get user's password hash from database
-    const userWithPassword = get<{ password_hash: string }>(
-      `SELECT password_hash FROM users WHERE id = ?`,
+    const userWithPassword = await get<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = $1`,
       [user.id]
     );
     
@@ -217,7 +234,7 @@ export async function DELETE(
     }
     
     // Get teacher's active groups before deletion
-    const activeGroups = all<{
+    const activeGroups = await all<{
       id: number;
       title: string;
       course_title: string;
@@ -225,15 +242,15 @@ export async function DELETE(
       `SELECT g.id, g.title, c.title as course_title
        FROM groups g
        LEFT JOIN courses c ON g.course_id = c.id
-       WHERE g.teacher_id = ? AND g.is_active = 1`,
+       WHERE g.teacher_id = $1 AND g.is_active = 1`,
       [params.id]
     );
     
     // Remove teacher from groups (set to null)
-    run(`UPDATE groups SET teacher_id = NULL WHERE teacher_id = ?`, [params.id]);
+    await run(`UPDATE groups SET teacher_id = NULL WHERE teacher_id = $1`, [params.id]);
     
     // Permanently delete the teacher
-    run(`DELETE FROM users WHERE id = ? AND role = 'teacher'`, [params.id]);
+    await run(`DELETE FROM users WHERE id = $1 AND role = 'teacher'`, [params.id]);
     
     return NextResponse.json({ 
       message: 'Викладача остаточно видалено',
@@ -242,7 +259,7 @@ export async function DELETE(
   }
   
   // Get teacher's active groups with details
-  const activeGroups = all<{
+  const activeGroups = await all<{
     id: number;
     public_id: string;
     title: string;
@@ -254,7 +271,7 @@ export async function DELETE(
     `SELECT g.id, g.public_id, g.title, c.title as course_title, g.weekly_day, g.start_time, g.duration_minutes
      FROM groups g
      LEFT JOIN courses c ON g.course_id = c.id
-     WHERE g.teacher_id = ? AND g.is_active = 1
+     WHERE g.teacher_id = $1 AND g.is_active = 1
      ORDER BY g.weekly_day, g.start_time`,
     [params.id]
   );
@@ -289,8 +306,8 @@ export async function DELETE(
   }
   
   // Check if teacher is active - if active, deactivate; if already inactive, allow permanent delete
-  const teacher = get<{ is_active: number }>(
-    `SELECT is_active FROM users WHERE id = ? AND role = 'teacher'`,
+  const teacher = await get<{ is_active: number }>(
+    `SELECT is_active FROM users WHERE id = $1 AND role = 'teacher'`,
     [params.id]
   );
   
@@ -300,8 +317,8 @@ export async function DELETE(
   
   // If permanent delete requested but teacher is still active, first deactivate
   if (permanent && teacher.is_active === 1) {
-    run(
-      `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    await run(
+      `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
       [params.id]
     );
     return NextResponse.json({ 
@@ -312,8 +329,8 @@ export async function DELETE(
   }
   
   // Default: deactivate the teacher
-  run(
-    `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+  await run(
+    `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
     [params.id]
   );
   
