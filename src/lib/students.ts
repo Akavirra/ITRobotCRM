@@ -97,7 +97,7 @@ export async function getStudentById(id: number): Promise<Student | null> {
     `SELECT students.*, 
       CASE WHEN (SELECT COUNT(*) FROM student_groups WHERE student_id = students.id AND is_active = 1) > 0 
            THEN 'studying' ELSE 'not_studying' END as study_status
-     FROM students WHERE students.id = ?`, 
+     FROM students WHERE students.id = $1`, 
     [id]
   );
   return student || null;
@@ -121,7 +121,7 @@ export async function getStudentWithGroups(id: number): Promise<StudentWithGroup
      FROM student_groups sg
      JOIN groups g ON sg.group_id = g.id
      JOIN courses c ON g.course_id = c.id
-     WHERE sg.student_id = ? AND sg.is_active = 1
+     WHERE sg.student_id = $1 AND sg.is_active = 1
      ORDER BY sg.join_date DESC`,
     [id]
   );
@@ -132,7 +132,7 @@ export async function getStudentWithGroups(id: number): Promise<StudentWithGroup
 // Check if public_id is unique for students
 async function isPublicIdUnique(publicId: string): Promise<boolean> {
   const existing = await get<{ id: number }>(
-    `SELECT id FROM students WHERE public_id = ?`,
+    `SELECT id FROM students WHERE public_id = $1`,
     [publicId]
   );
   return !existing;
@@ -158,7 +158,7 @@ export async function createStudent(
 ): Promise<{ id: number; public_id: string }> {
   const publicId = await generateUniquePublicId('student', isPublicIdUnique);
   const result = await run(
-    `INSERT INTO students (public_id, full_name, phone, email, parent_name, parent_phone, notes, birth_date, photo, school, discount, parent_relation, parent2_name, parent2_relation, interested_courses, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO students (public_id, full_name, phone, email, parent_name, parent_phone, notes, birth_date, photo, school, discount, parent_relation, parent2_name, parent2_relation, interested_courses, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [publicId, fullName, phone || null, email || null, parentName || null, parentPhone || null, notes || null, birthDate || null, photo || null, school || null, discount || null, parentRelation || null, parent2Name || null, parent2Relation || null, interestedCourses || null, source || null]
   );
   
@@ -185,24 +185,24 @@ export async function updateStudent(
   source?: string
 ): Promise<void> {
   await run(
-    `UPDATE students SET full_name = ?, phone = ?, email = ?, parent_name = ?, parent_phone = ?, notes = ?, birth_date = ?, photo = ?, school = ?, discount = ?, parent_relation = ?, parent2_name = ?, parent2_relation = ?, interested_courses = ?, source = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    `UPDATE students SET full_name = $1, phone = $2, email = $3, parent_name = $4, parent_phone = $5, notes = $6, birth_date = $7, photo = $8, school = $9, discount = $10, parent_relation = $11, parent2_name = $12, parent2_relation = $13, interested_courses = $14, source = $15, updated_at = CURRENT_TIMESTAMP WHERE id = $16`,
     [fullName, phone || null, email || null, parentName || null, parentPhone || null, notes || null, birthDate || null, photo || null, school || null, discount || null, parentRelation || null, parent2Name || null, parent2Relation || null, interestedCourses || null, source || null, id]
   );
 }
 
 // Archive student
 export async function archiveStudent(id: number): Promise<void> {
-  await run(`UPDATE students SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+  await run(`UPDATE students SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
 }
 
 // Restore student
 export async function restoreStudent(id: number): Promise<void> {
-  await run(`UPDATE students SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [id]);
+  await run(`UPDATE students SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
 }
 
 // Delete student permanently
 export async function deleteStudent(id: number): Promise<void> {
-  await run(`DELETE FROM students WHERE id = ?`, [id]);
+  await run(`DELETE FROM students WHERE id = $1`, [id]);
 }
 
 // Get student's active groups (for warning before deletion)
@@ -219,7 +219,7 @@ export async function getStudentActiveGroups(studentId: number): Promise<Student
      FROM student_groups sg
      JOIN groups g ON sg.group_id = g.id
      JOIN courses c ON g.course_id = c.id
-     WHERE sg.student_id = ? AND sg.is_active = 1 AND g.is_active = 1
+     WHERE sg.student_id = $1 AND sg.is_active = 1 AND g.is_active = 1
      ORDER BY g.title`,
     [studentId]
   );
@@ -256,16 +256,16 @@ export async function safeDeleteStudent(studentId: number, adminUserId: number):
   try {
     await transaction(async () => {
       // Delete from student_groups (cascade will handle this, but we do it explicitly for logging)
-      await run(`DELETE FROM student_groups WHERE student_id = ?`, [studentId]);
+      await run(`DELETE FROM student_groups WHERE student_id = $1`, [studentId]);
       
       // Delete attendance records (cascade will handle this, but explicit for safety)
-      await run(`DELETE FROM attendance WHERE student_id = ?`, [studentId]);
+      await run(`DELETE FROM attendance WHERE student_id = $1`, [studentId]);
       
       // Delete payment records (cascade will handle this, but explicit for safety)
-      await run(`DELETE FROM payments WHERE student_id = ?`, [studentId]);
+      await run(`DELETE FROM payments WHERE student_id = $1`, [studentId]);;
       
       // Delete the student
-      await run(`DELETE FROM students WHERE id = ?`, [studentId]);
+      await run(`DELETE FROM students WHERE id = $1`, [studentId]);
     });
     
     // Log the deletion
@@ -297,16 +297,16 @@ export async function forceDeleteStudent(studentId: number, adminUserId: number)
   try {
     await transaction(async () => {
       // Delete from student_groups
-      await run(`DELETE FROM student_groups WHERE student_id = ?`, [studentId]);
+      await run(`DELETE FROM student_groups WHERE student_id = $1`, [studentId]);
       
       // Delete attendance records
-      await run(`DELETE FROM attendance WHERE student_id = ?`, [studentId]);
+      await run(`DELETE FROM attendance WHERE student_id = $1`, [studentId]);;
       
       // Delete payment records
-      await run(`DELETE FROM payments WHERE student_id = ?`, [studentId]);
+      await run(`DELETE FROM payments WHERE student_id = $1`, [studentId]);;
       
       // Delete the student
-      await run(`DELETE FROM students WHERE id = ?`, [studentId]);
+      await run(`DELETE FROM students WHERE id = $1`, [studentId]);
     });
     
     // Log the deletion with group info
@@ -328,19 +328,19 @@ export async function verifyNoOrphanRecords(studentId: number): Promise<{ hasOrp
   const orphanTables: string[] = [];
   
   // Check student_groups
-  const sgCount = await get<{ count: number }>(`SELECT COUNT(*) as count FROM student_groups WHERE student_id = ?`, [studentId]);
+  const sgCount = await get<{ count: number }>(`SELECT COUNT(*) as count FROM student_groups WHERE student_id = $1`, [studentId]);
   if (sgCount && sgCount.count > 0) {
     orphanTables.push('student_groups');
   }
   
   // Check attendance
-  const attCount = await get<{ count: number }>(`SELECT COUNT(*) as count FROM attendance WHERE student_id = ?`, [studentId]);
+  const attCount = await get<{ count: number }>(`SELECT COUNT(*) as count FROM attendance WHERE student_id = $1`, [studentId]);
   if (attCount && attCount.count > 0) {
     orphanTables.push('attendance');
   }
   
   // Check payments
-  const payCount = await get<{ count: number }>(`SELECT COUNT(*) as count FROM payments WHERE student_id = ?`, [studentId]);
+  const payCount = await get<{ count: number }>(`SELECT COUNT(*) as count FROM payments WHERE student_id = $1`, [studentId]);
   if (payCount && payCount.count > 0) {
     orphanTables.push('payments');
   }
@@ -360,14 +360,14 @@ export async function searchStudents(query: string, includeInactive: boolean = f
         CASE WHEN COUNT(DISTINCT sg.id) > 0 THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students s
        LEFT JOIN student_groups sg ON s.id = sg.student_id AND sg.is_active = 1
-       WHERE s.full_name LIKE ? OR s.phone LIKE ? OR s.parent_name LIKE ? OR s.parent_phone LIKE ?
+       WHERE s.full_name LIKE $1 OR s.phone LIKE $2 OR s.parent_name LIKE $3 OR s.parent_phone LIKE $4
        GROUP BY s.id
        ORDER BY s.full_name ${limitClause}`
     : `SELECT s.*, COUNT(DISTINCT sg.id) as groups_count,
         CASE WHEN COUNT(DISTINCT sg.id) > 0 THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students s
        LEFT JOIN student_groups sg ON s.id = sg.student_id AND sg.is_active = 1
-       WHERE s.is_active = 1 AND (s.full_name LIKE ? OR s.phone LIKE ? OR s.parent_name LIKE ? OR s.parent_phone LIKE ?)
+       WHERE s.is_active = 1 AND (s.full_name LIKE $1 OR s.phone LIKE $2 OR s.parent_name LIKE $3 OR s.parent_phone LIKE $4)
        GROUP BY s.id
        ORDER BY s.full_name ${limitClause}`;
   
@@ -381,9 +381,9 @@ export async function quickSearchStudents(query: string, limit: number = 10): Pr
                 CASE WHEN (SELECT COUNT(*) FROM student_groups WHERE student_id = students.id AND is_active = 1) > 0 
                      THEN 'studying' ELSE 'not_studying' END as study_status
                FROM students 
-               WHERE is_active = 1 AND (full_name LIKE ? OR phone LIKE ?)
+               WHERE is_active = 1 AND (full_name LIKE $1 OR phone LIKE $2)
                ORDER BY full_name
-               LIMIT ?`;
+               LIMIT $3`;
   
   return await all<Student>(sql, [searchTerm, searchTerm, limit]);
 }
@@ -403,12 +403,12 @@ export async function getStudentAttendanceHistory(
              FROM attendance a
              JOIN lessons l ON a.lesson_id = l.id
              JOIN groups g ON l.group_id = g.id
-             WHERE a.student_id = ?`;
+             WHERE a.student_id = $1`;
   
   const params: (number | string)[] = [studentId];
   
   if (groupId) {
-    sql += ` AND l.group_id = ?`;
+    sql += ` AND l.group_id = $2`;
     params.push(groupId);
   }
   
@@ -439,12 +439,12 @@ export async function getStudentPaymentHistory(
   let sql = `SELECT p.id, p.month, p.amount, p.method, p.paid_at, p.note, g.title as group_title
              FROM payments p
              JOIN groups g ON p.group_id = g.id
-             WHERE p.student_id = ?`;
+             WHERE p.student_id = $1`;
   
   const params: (number | string)[] = [studentId];
   
   if (groupId) {
-    sql += ` AND p.group_id = ?`;
+    sql += ` AND p.group_id = $2`;
     params.push(groupId);
   }
   
@@ -470,13 +470,13 @@ export async function getStudentsWithDebt(month: string): Promise<StudentWithDeb
     CASE WHEN (SELECT COUNT(*) FROM student_groups sg WHERE sg.student_id = s.id AND sg.is_active = 1) > 0 
          THEN 'studying' ELSE 'not_studying' END as study_status,
     g.id as group_id, g.title as group_title, g.monthly_price,
-    ? as month,
+    $1 as month,
     COALESCE(SUM(p.amount), 0) as paid_amount,
     g.monthly_price - COALESCE(SUM(p.amount), 0) as debt
    FROM student_groups sg
    JOIN students s ON sg.student_id = s.id
    JOIN groups g ON sg.group_id = g.id
-   LEFT JOIN payments p ON p.student_id = s.id AND p.group_id = g.id AND p.month = ?
+   LEFT JOIN payments p ON p.student_id = s.id AND p.group_id = g.id AND p.month = $1
    WHERE sg.is_active = 1 AND s.is_active = 1 AND g.is_active = 1
    GROUP BY s.id, g.id
    HAVING debt > 0
@@ -498,7 +498,7 @@ export async function getTotalDebtForMonth(month: string): Promise<{ total_debt:
        FROM student_groups sg
        JOIN students s ON sg.student_id = s.id
        JOIN groups g ON sg.group_id = g.id
-       LEFT JOIN payments p ON p.student_id = s.id AND p.group_id = g.id AND p.month = ?
+       LEFT JOIN payments p ON p.student_id = s.id AND p.group_id = g.id AND p.month = $1
        WHERE sg.is_active = 1 AND s.is_active = 1 AND g.is_active = 1
        GROUP BY s.id, g.id
        HAVING debt > 0
@@ -537,7 +537,7 @@ export async function getStudentsWithGroups(includeInactive: boolean = false): P
     FROM student_groups sg
     JOIN groups g ON sg.group_id = g.id
     JOIN courses c ON g.course_id = c.id
-    WHERE sg.student_id = ? AND sg.is_active = 1 AND g.is_active = 1
+    WHERE sg.student_id = $1 AND sg.is_active = 1 AND g.is_active = 1
     ORDER BY g.title
   `;
   
@@ -559,13 +559,13 @@ export async function searchStudentsWithGroups(query: string, includeInactive: b
         CASE WHEN (SELECT COUNT(*) FROM student_groups WHERE student_id = students.id AND is_active = 1) > 0 
              THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students
-       WHERE full_name LIKE ? OR phone LIKE ? OR parent_name LIKE ? OR parent_phone LIKE ?
+       WHERE full_name LIKE $1 OR phone LIKE $2 OR parent_name LIKE $3 OR parent_phone LIKE $4
        ORDER BY full_name`
     : `SELECT students.*, 
         CASE WHEN (SELECT COUNT(*) FROM student_groups WHERE student_id = students.id AND is_active = 1) > 0 
              THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students
-       WHERE is_active = 1 AND (full_name LIKE ? OR phone LIKE ? OR parent_name LIKE ? OR parent_phone LIKE ?)
+       WHERE is_active = 1 AND (full_name LIKE $1 OR phone LIKE $2 OR parent_name LIKE $3 OR parent_phone LIKE $4)
        ORDER BY full_name`;
   
   const students = await all<Student>(studentsSql, [searchTerm, searchTerm, searchTerm, searchTerm]);
@@ -576,7 +576,7 @@ export async function searchStudentsWithGroups(query: string, includeInactive: b
     FROM student_groups sg
     JOIN groups g ON sg.group_id = g.id
     JOIN courses c ON g.course_id = c.id
-    WHERE sg.student_id = ? AND sg.is_active = 1 AND g.is_active = 1
+    WHERE sg.student_id = $1 AND sg.is_active = 1 AND g.is_active = 1
     ORDER BY g.title
   `;
   

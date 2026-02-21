@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
         up.weekly_report as weeklyReport
       FROM users u
       LEFT JOIN user_settings up ON u.id = up.user_id
-      WHERE u.id = ?`,
+      WHERE u.id = $1`,
       [user.id]
     );
     
@@ -111,27 +111,27 @@ export async function PUT(request: NextRequest) {
     
     // Update user name
     if (displayName !== undefined) {
-      await run(`UPDATE users SET name = ? WHERE id = ?`, [displayName, user.id]);
+      await run(`UPDATE users SET name = $1 WHERE id = $2`, [displayName, user.id]);
     }
     
     // Check if user_settings exists
-    const existingSettings = await get(`SELECT user_id FROM user_settings WHERE user_id = ?`, [user.id]);
+    const existingSettings = await get(`SELECT user_id FROM user_settings WHERE user_id = $1`, [user.id]);
     
     if (existingSettings) {
       // Update existing settings
       await run(
         `UPDATE user_settings SET 
-          phone = ?,
-          language = ?,
-          timezone = ?,
-          date_format = ?,
-          currency = ?,
-          email_notifications = ?,
-          push_notifications = ?,
-          lesson_reminders = ?,
-          payment_alerts = ?,
-          weekly_report = ?
-        WHERE user_id = ?`,
+          phone = $1,
+          language = $2,
+          timezone = $3,
+          date_format = $4,
+          currency = $5,
+          email_notifications = $6,
+          push_notifications = $7,
+          lesson_reminders = $8,
+          payment_alerts = $9,
+          weekly_report = $10
+        WHERE user_id = $11`,
         [
           phone || '',
           language || 'uk',

@@ -43,7 +43,7 @@ export async function createSession(userId: number): Promise<string> {
   const expiresAt = new Date(Date.now() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000);
   
   await run(
-    `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`,
+    `INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, $3)`,
     [sessionId, userId, expiresAt.toISOString()]
   );
   
@@ -53,7 +53,7 @@ export async function createSession(userId: number): Promise<string> {
 // Get session
 export async function getSession(sessionId: string): Promise<Session | null> {
   const session = await get<Session>(
-    `SELECT * FROM sessions WHERE id = ? AND expires_at > datetime('now')`,
+    `SELECT * FROM sessions WHERE id = $1 AND expires_at > datetime('now')`,
     [sessionId]
   );
   
@@ -62,7 +62,7 @@ export async function getSession(sessionId: string): Promise<Session | null> {
 
 // Delete session
 export async function deleteSession(sessionId: string): Promise<void> {
-  await run(`DELETE FROM sessions WHERE id = ?`, [sessionId]);
+  await run(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
 }
 
 // Clean expired sessions
@@ -73,7 +73,7 @@ export async function cleanExpiredSessions(): Promise<void> {
 // Get user by email
 export async function getUserByEmail(email: string): Promise<User | null> {
   const user = await get<User>(
-    `SELECT * FROM users WHERE email = ?`,
+    `SELECT * FROM users WHERE email = $1`,
     [email]
   );
   
@@ -83,7 +83,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 // Get user by ID
 export async function getUserById(id: number): Promise<User | null> {
   const user = await get<User>(
-    `SELECT * FROM users WHERE id = ?`,
+    `SELECT * FROM users WHERE id = $1`,
     [id]
   );
   
@@ -104,7 +104,7 @@ export async function login(email: string, password: string): Promise<{ user: Us
   }
   
   const userWithPassword = await get<{ password_hash: string }>(
-    `SELECT password_hash FROM users WHERE id = ?`,
+    `SELECT password_hash FROM users WHERE id = $1`,
     [user.id]
   );
   
@@ -154,7 +154,7 @@ export async function userHasGroupAccess(userId: number, groupId: number, userRo
   }
   
   const group = await get<{ teacher_id: number }>(
-    `SELECT teacher_id FROM groups WHERE id = ?`,
+    `SELECT teacher_id FROM groups WHERE id = $1`,
     [groupId]
   );
   
@@ -169,7 +169,7 @@ export async function getAccessibleGroups(userId: number, userRole: string): Pro
   }
   
   const groups = await all<{ id: number }>(
-    `SELECT id FROM groups WHERE teacher_id = ? AND is_active = 1`,
+    `SELECT id FROM groups WHERE teacher_id = $1 AND is_active = 1`,
     [userId]
   );
   

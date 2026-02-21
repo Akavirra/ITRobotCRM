@@ -50,7 +50,7 @@ export async function PUT(request: NextRequest) {
     
     // Get current user password hash
     const userRecord = await get<{ password_hash: string }>(
-      `SELECT password_hash FROM users WHERE id = ?`,
+      `SELECT password_hash FROM users WHERE id = $1`,
       [user.id]
     );
     
@@ -75,7 +75,7 @@ export async function PUT(request: NextRequest) {
     const newPasswordHash = await hashPassword(newPassword);
     
     await run(
-      `UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET password_hash = $1, updated_at = datetime('now') WHERE id = $2`,
       [newPasswordHash, user.id]
     );
     

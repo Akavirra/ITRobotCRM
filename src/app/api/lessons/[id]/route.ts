@@ -67,7 +67,7 @@ export async function GET(
     JOIN groups g ON l.group_id = g.id
     JOIN courses c ON g.course_id = c.id
     JOIN users u ON g.teacher_id = u.id
-    WHERE l.id = ?`,
+    WHERE l.id = $1`,
     [lessonId]
   );
   
@@ -172,7 +172,7 @@ export async function PATCH(
     
     params.push(lessonId);
     
-    const sql = `UPDATE lessons SET ${updates.join(', ')} WHERE id = ?`;
+    const sql = `UPDATE lessons SET ${updates.join(', ')} WHERE id = ${params.length + 1}`;
     await run(sql, params);
     
     // Get updated lesson with group, course and teacher details
@@ -254,7 +254,7 @@ export async function DELETE(
   
   // Check for attendance records
   const attendanceCount = await get<{ count: number }>(
-    `SELECT COUNT(*) as count FROM attendance WHERE lesson_id = ?`,
+    `SELECT COUNT(*) as count FROM attendance WHERE lesson_id = $1`,
     [lessonId]
   );
   
@@ -265,7 +265,7 @@ export async function DELETE(
     );
   }
   
-  await run(`DELETE FROM lessons WHERE id = ?`, [lessonId]);
+  await run(`DELETE FROM lessons WHERE id = $1`, [lessonId]);
   
   return NextResponse.json({ message: 'Заняття видалено' });
 }
