@@ -11,6 +11,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:migrate:neon": "node scripts/migrate-neon.js",
     "db:seed": "node scripts/seed.js",
+    "db:seed:neon": "node scripts/seed-neon.js",
     "db:reset": "node scripts/reset.js",
     "test": "jest"
   },
