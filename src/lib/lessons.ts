@@ -186,7 +186,7 @@ export async function getUpcomingLessons(limit: number = 10): Promise<Array<Less
 // Cancel lesson
 export async function cancelLesson(lessonId: number): Promise<void> {
   await run(
-    `UPDATE lessons SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    `UPDATE lessons SET status = 'canceled', updated_at = NOW() WHERE id = $1`,
     [lessonId]
   );
 }
@@ -194,7 +194,7 @@ export async function cancelLesson(lessonId: number): Promise<void> {
 // Update lesson topic
 export async function updateLessonTopic(lessonId: number, topic: string): Promise<void> {
   await run(
-    `UPDATE lessons SET topic = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+    `UPDATE lessons SET topic = $1, updated_at = NOW() WHERE id = $2`,
     [topic, lessonId]
   );
 }
@@ -202,7 +202,7 @@ export async function updateLessonTopic(lessonId: number, topic: string): Promis
 // Mark lesson as done
 export async function markLessonDone(lessonId: number): Promise<void> {
   await run(
-    `UPDATE lessons SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    `UPDATE lessons SET status = 'done', updated_at = NOW() WHERE id = $1`,
     [lessonId]
   );
 }

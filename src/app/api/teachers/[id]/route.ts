@@ -144,7 +144,7 @@ export async function PUT(
     
     // Build update query
     let updateQuery = `UPDATE users
-     SET name = $1, email = $2, phone = $3, telegram_id = $4, notes = $5, updated_at = CURRENT_TIMESTAMP`;
+     SET name = $1, email = $2, phone = $3, telegram_id = $4, notes = $5, updated_at = NOW()`;
     let updateParams: (string | number | null)[] = [name.trim(), email.trim().toLowerCase(), phone || null, telegram_id || null, notes || null];
     
     if (photoUrl !== undefined) {
@@ -318,7 +318,7 @@ export async function DELETE(
   // If permanent delete requested but teacher is still active, first deactivate
   if (permanent && teacher.is_active === 1) {
     await run(
-      `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+      `UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = $1`,
       [params.id]
     );
     return NextResponse.json({ 
@@ -330,7 +330,7 @@ export async function DELETE(
   
   // Default: deactivate the teacher
   await run(
-    `UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    `UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = $1`,
     [params.id]
   );
   

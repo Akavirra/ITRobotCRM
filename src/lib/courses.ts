@@ -96,19 +96,19 @@ export async function updateCourse(
   program?: string
 ): Promise<void> {
   await run(
-    `UPDATE courses SET title = $1, description = $2, age_min = $3, duration_months = $4, program = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6`,
+    `UPDATE courses SET title = $1, description = $2, age_min = $3, duration_months = $4, program = $5, updated_at = NOW() WHERE id = $6`,
     [title, description || null, ageMin || 6, durationMonths || 1, program || null, id]
   );
 }
 
 // Archive course (soft delete)
 export async function archiveCourse(id: number): Promise<void> {
-  await run(`UPDATE courses SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+  await run(`UPDATE courses SET is_active = 0, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Restore course
 export async function restoreCourse(id: number): Promise<void> {
-  await run(`UPDATE courses SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+  await run(`UPDATE courses SET is_active = 1, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Delete course permanently (with cascade delete of groups)
@@ -125,7 +125,7 @@ export async function deleteCourse(id: number): Promise<boolean> {
 // Update course flyer path
 export async function updateCourseFlyerPath(id: number, flyerPath: string | null): Promise<void> {
   await run(
-    `UPDATE courses SET flyer_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+    `UPDATE courses SET flyer_path = $1, updated_at = NOW() WHERE id = $2`,
     [flyerPath, id]
   );
 }

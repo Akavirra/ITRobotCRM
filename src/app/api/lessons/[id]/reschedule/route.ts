@@ -78,7 +78,7 @@ export async function POST(
         start_datetime = $2, 
         end_datetime = $3, 
         status = 'scheduled',
-        updated_at = CURRENT_TIMESTAMP 
+        updated_at = NOW() 
       WHERE id = $4`,
       [
         format(newDateObj, 'yyyy-MM-dd'),

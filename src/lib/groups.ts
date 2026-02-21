@@ -328,7 +328,7 @@ export async function updateGroup(id: number, input: UpdateGroupInput): Promise<
       status = $12, 
       note = $13, 
       photos_folder_url = $14, 
-      updated_at = CURRENT_TIMESTAMP 
+      updated_at = NOW() 
     WHERE id = $15`,
     [
       input.course_id,
@@ -353,19 +353,19 @@ export async function updateGroup(id: number, input: UpdateGroupInput): Promise<
 // Update group status
 export async function updateGroupStatus(id: number, status: GroupStatus): Promise<void> {
   await run(
-    `UPDATE groups SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+    `UPDATE groups SET status = $1, updated_at = NOW() WHERE id = $2`,
     [status, id]
   );
 }
 
 // Archive group - set status to inactive
 export async function archiveGroup(id: number): Promise<void> {
-  await run(`UPDATE groups SET status = 'inactive', is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+  await run(`UPDATE groups SET status = 'inactive', is_active = 0, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Restore group - set status to active
 export async function restoreGroup(id: number): Promise<void> {
-  await run(`UPDATE groups SET status = 'active', is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+  await run(`UPDATE groups SET status = 'active', is_active = 1, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Delete group permanently (only if no students, lessons, payments)
@@ -475,7 +475,7 @@ export async function addStudentToGroup(studentId: number, groupId: number, join
 // Remove student from group
 export async function removeStudentFromGroup(studentGroupId: number): Promise<void> {
   await run(
-    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = NOW() WHERE id = $1`,
     [studentGroupId]
   );
 }
@@ -483,7 +483,7 @@ export async function removeStudentFromGroup(studentGroupId: number): Promise<vo
 // Remove student from group by student and group IDs
 export async function removeStudentFromGroupByIDs(studentId: number, groupId: number): Promise<void> {
   await run(
-    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP WHERE student_id = $1 AND group_id = $2 AND is_active = 1`,
+    `UPDATE student_groups SET is_active = 0, leave_date = CURRENT_DATE, updated_at = NOW() WHERE student_id = $1 AND group_id = $2 AND is_active = 1`,
     [studentId, groupId]
   );
 }
@@ -509,7 +509,7 @@ export async function wasStudentInGroup(studentId: number, groupId: number): Pro
 // Reactivate student in group (when they were removed before)
 export async function reactivateStudentInGroup(studentId: number, groupId: number, joinDate?: string): Promise<number> {
   await run(
-    `UPDATE student_groups SET is_active = 1, join_date = $1, leave_date = NULL, updated_at = CURRENT_TIMESTAMP WHERE student_id = $2 AND group_id = $3 AND is_active = 0`,
+    `UPDATE student_groups SET is_active = 1, join_date = $1, leave_date = NULL, updated_at = NOW() WHERE student_id = $2 AND group_id = $3 AND is_active = 0`,
     [joinDate || new Date().toISOString().split('T')[0], studentId, groupId]
   );
   

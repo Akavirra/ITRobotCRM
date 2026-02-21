@@ -75,7 +75,7 @@ export async function PUT(request: NextRequest) {
     const newPasswordHash = await hashPassword(newPassword);
     
     await run(
-      `UPDATE users SET password_hash = $1, updated_at = datetime('now') WHERE id = $2`,
+      `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
       [newPasswordHash, user.id]
     );
     

@@ -125,7 +125,7 @@ export async function PATCH(
     const body = await request.json();
     const { topic, status, lesson_date, start_time } = body;
     
-    let updates: string[] = ['updated_at = CURRENT_TIMESTAMP'];
+    let updates: string[] = ['updated_at = NOW()'];
     let params: (string | number)[] = [];
     
     if (topic !== undefined) {

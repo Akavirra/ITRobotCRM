@@ -52,7 +52,7 @@ export async function POST(
     const { reason } = body;
     
     await run(
-      `UPDATE lessons SET status = 'canceled', topic = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      `UPDATE lessons SET status = 'canceled', topic = $1, updated_at = NOW() WHERE id = $2`,
       [reason || 'Скасовано', lessonId]
     );
     

@@ -53,7 +53,7 @@ export async function createSession(userId: number): Promise<string> {
 // Get session
 export async function getSession(sessionId: string): Promise<Session | null> {
   const session = await get<Session>(
-    `SELECT * FROM sessions WHERE id = $1 AND expires_at > datetime('now')`,
+    `SELECT * FROM sessions WHERE id = $1 AND expires_at > NOW()`,
     [sessionId]
   );
   
@@ -67,7 +67,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 // Clean expired sessions
 export async function cleanExpiredSessions(): Promise<void> {
-  await run(`DELETE FROM sessions WHERE expires_at < datetime('now')`);
+  await run(`DELETE FROM sessions WHERE expires_at < NOW()`);
 }
 
 // Get user by email

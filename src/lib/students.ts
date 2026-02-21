@@ -185,19 +185,19 @@ export async function updateStudent(
   source?: string
 ): Promise<void> {
   await run(
-    `UPDATE students SET full_name = $1, phone = $2, email = $3, parent_name = $4, parent_phone = $5, notes = $6, birth_date = $7, photo = $8, school = $9, discount = $10, parent_relation = $11, parent2_name = $12, parent2_relation = $13, interested_courses = $14, source = $15, updated_at = CURRENT_TIMESTAMP WHERE id = $16`,
+    `UPDATE students SET full_name = $1, phone = $2, email = $3, parent_name = $4, parent_phone = $5, notes = $6, birth_date = $7, photo = $8, school = $9, discount = $10, parent_relation = $11, parent2_name = $12, parent2_relation = $13, interested_courses = $14, source = $15, updated_at = NOW() WHERE id = $16`,
     [fullName, phone || null, email || null, parentName || null, parentPhone || null, notes || null, birthDate || null, photo || null, school || null, discount || null, parentRelation || null, parent2Name || null, parent2Relation || null, interestedCourses || null, source || null, id]
   );
 }
 
 // Archive student
 export async function archiveStudent(id: number): Promise<void> {
-  await run(`UPDATE students SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+  await run(`UPDATE students SET is_active = 0, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Restore student
 export async function restoreStudent(id: number): Promise<void> {
-  await run(`UPDATE students SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+  await run(`UPDATE students SET is_active = 1, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Delete student permanently

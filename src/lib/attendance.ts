@@ -97,7 +97,7 @@ export async function setAttendance(
   
   if (existing) {
     await run(
-      `UPDATE attendance SET status = $1, comment = $2, makeup_lesson_id = $3, updated_by = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5`,
+      `UPDATE attendance SET status = $1, comment = $2, makeup_lesson_id = $3, updated_by = $4, updated_at = NOW() WHERE id = $5`,
       [status, comment || null, makeupLessonId || null, updatedBy, existing.id]
     );
     return existing.id;
