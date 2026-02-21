@@ -360,14 +360,14 @@ export async function searchStudents(query: string, includeInactive: boolean = f
         CASE WHEN COUNT(DISTINCT sg.id) > 0 THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students s
        LEFT JOIN student_groups sg ON s.id = sg.student_id AND sg.is_active = TRUE
-       WHERE s.full_name LIKE $1 OR s.phone LIKE $2 OR s.parent_name LIKE $3 OR s.parent_phone LIKE $4
+       WHERE s.full_name ILIKE $1 OR s.phone ILIKE $2 OR s.parent_name ILIKE $3 OR s.parent_phone ILIKE $4
        GROUP BY s.id
        ORDER BY s.full_name ${limitClause}`
     : `SELECT s.*, COUNT(DISTINCT sg.id) as groups_count,
         CASE WHEN COUNT(DISTINCT sg.id) > 0 THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students s
        LEFT JOIN student_groups sg ON s.id = sg.student_id AND sg.is_active = TRUE
-       WHERE s.is_active = TRUE AND (s.full_name LIKE $1 OR s.phone LIKE $2 OR s.parent_name LIKE $3 OR s.parent_phone LIKE $4)
+       WHERE s.is_active = TRUE AND (s.full_name ILIKE $1 OR s.phone ILIKE $2 OR s.parent_name ILIKE $3 OR s.parent_phone ILIKE $4)
        GROUP BY s.id
        ORDER BY s.full_name ${limitClause}`;
   
@@ -381,7 +381,7 @@ export async function quickSearchStudents(query: string, limit: number = 10): Pr
                 CASE WHEN (SELECT COUNT(*) FROM student_groups WHERE student_id = students.id AND is_active = TRUE) > 0 
                      THEN 'studying' ELSE 'not_studying' END as study_status
                FROM students 
-               WHERE is_active = TRUE AND (full_name LIKE $1 OR phone LIKE $2)
+                WHERE is_active = TRUE AND (full_name ILIKE $1 OR phone ILIKE $2)
                ORDER BY full_name
                LIMIT $3`;
   
@@ -559,13 +559,13 @@ export async function searchStudentsWithGroups(query: string, includeInactive: b
         CASE WHEN (SELECT COUNT(*) FROM student_groups WHERE student_id = students.id AND is_active = TRUE) > 0 
              THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students
-       WHERE full_name LIKE $1 OR phone LIKE $2 OR parent_name LIKE $3 OR parent_phone LIKE $4
+       WHERE full_name ILIKE $1 OR phone ILIKE $2 OR parent_name ILIKE $3 OR parent_phone ILIKE $4
        ORDER BY full_name`
     : `SELECT students.*, 
         CASE WHEN (SELECT COUNT(*) FROM student_groups WHERE student_id = students.id AND is_active = TRUE) > 0 
              THEN 'studying' ELSE 'not_studying' END as study_status
        FROM students
-       WHERE is_active = TRUE AND (full_name LIKE $1 OR phone LIKE $2 OR parent_name LIKE $3 OR parent_phone LIKE $4)
+       WHERE is_active = TRUE AND (full_name ILIKE $1 OR phone ILIKE $2 OR parent_name ILIKE $3 OR parent_phone ILIKE $4)
        ORDER BY full_name`;
   
   const students = await all<Student>(studentsSql, [searchTerm, searchTerm, searchTerm, searchTerm]);

@@ -143,8 +143,8 @@ export async function getCourseFlyerPath(id: number): Promise<string | null> {
 export async function searchCourses(query: string, includeInactive: boolean = false): Promise<Course[]> {
   const searchTerm = `%${query}%`;
   const sql = includeInactive
-    ? `SELECT * FROM courses WHERE title LIKE $1 OR description LIKE $2 ORDER BY created_at DESC`
-    : `SELECT * FROM courses WHERE is_active = TRUE AND (title LIKE $1 OR description LIKE $2) ORDER BY created_at DESC`;
+    ? `SELECT * FROM courses WHERE title ILIKE $1 OR description ILIKE $2 ORDER BY created_at DESC`
+    : `SELECT * FROM courses WHERE is_active = TRUE AND (title ILIKE $1 OR description ILIKE $2) ORDER BY created_at DESC`;
   
   return await all<Course>(sql, [searchTerm, searchTerm]);
 }

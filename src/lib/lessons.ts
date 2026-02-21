@@ -161,7 +161,7 @@ export async function getUpcomingLessonsForTeacher(
      FROM lessons l
      JOIN groups g ON l.group_id = g.id
      JOIN courses c ON g.course_id = c.id
-     WHERE g.teacher_id = $1 AND l.lesson_date >= date('now') AND l.status != 'canceled'
+     WHERE g.teacher_id = $1 AND l.lesson_date >= CURRENT_DATE AND l.status != 'canceled'
      ORDER BY l.lesson_date ASC
      LIMIT $2`,
     [teacherId, limit]
@@ -176,7 +176,7 @@ export async function getUpcomingLessons(limit: number = 10): Promise<Array<Less
      JOIN groups g ON l.group_id = g.id
      JOIN courses c ON g.course_id = c.id
      JOIN users u ON g.teacher_id = u.id
-     WHERE l.lesson_date >= date('now') AND l.status != 'canceled'
+     WHERE l.lesson_date >= CURRENT_DATE AND l.status != 'canceled'
      ORDER BY l.lesson_date ASC
      LIMIT $1`,
     [limit]

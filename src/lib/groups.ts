@@ -226,7 +226,7 @@ export async function getGroupsFiltered(filters: {
   }
   
   if (filters.search) {
-    sql += ` AND (g.title LIKE $${paramIndex} OR c.title LIKE $${paramIndex})`;
+    sql += ` AND (g.title ILIKE $${paramIndex} OR c.title ILIKE $${paramIndex})`;
     const searchTerm = `%${filters.search}%`;
     params.push(searchTerm);
     paramIndex++;
