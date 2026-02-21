@@ -74,7 +74,7 @@ export async function getPaymentStatusForGroupMonth(
             s.parent_name, s.parent_phone
      FROM students s
      JOIN student_groups sg ON s.id = sg.student_id
-     WHERE sg.group_id = $1 AND sg.is_active = 1 AND s.is_active = 1
+     WHERE sg.group_id = $1 AND sg.is_active = TRUE AND s.is_active = TRUE
      ORDER BY s.full_name`,
     [groupId]
   );

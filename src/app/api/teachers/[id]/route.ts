@@ -60,7 +60,7 @@ export async function GET(
             c.title as course_title
      FROM groups g
      LEFT JOIN courses c ON g.course_id = c.id
-     WHERE g.teacher_id = $1 AND g.is_active = 1
+     WHERE g.teacher_id = $1 AND g.is_active = TRUE
      ORDER BY g.weekly_day, g.start_time`,
     [params.id]
   );
@@ -242,7 +242,7 @@ export async function DELETE(
       `SELECT g.id, g.title, c.title as course_title
        FROM groups g
        LEFT JOIN courses c ON g.course_id = c.id
-       WHERE g.teacher_id = $1 AND g.is_active = 1`,
+       WHERE g.teacher_id = $1 AND g.is_active = TRUE`,
       [params.id]
     );
     
@@ -271,7 +271,7 @@ export async function DELETE(
     `SELECT g.id, g.public_id, g.title, c.title as course_title, g.weekly_day, g.start_time, g.duration_minutes
      FROM groups g
      LEFT JOIN courses c ON g.course_id = c.id
-     WHERE g.teacher_id = $1 AND g.is_active = 1
+     WHERE g.teacher_id = $1 AND g.is_active = TRUE
      ORDER BY g.weekly_day, g.start_time`,
     [params.id]
   );
@@ -318,7 +318,7 @@ export async function DELETE(
   // If permanent delete requested but teacher is still active, first deactivate
   if (permanent && teacher.is_active === 1) {
     await run(
-      `UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = $1`,
+      `UPDATE users SET is_active = FALSE, updated_at = NOW() WHERE id = $1`,
       [params.id]
     );
     return NextResponse.json({ 
@@ -330,7 +330,7 @@ export async function DELETE(
   
   // Default: deactivate the teacher
   await run(
-    `UPDATE users SET is_active = 0, updated_at = NOW() WHERE id = $1`,
+    `UPDATE users SET is_active = FALSE, updated_at = NOW() WHERE id = $1`,
     [params.id]
   );
   

@@ -65,7 +65,7 @@ export async function GET(
     FROM students s
     JOIN student_groups sg ON s.id = sg.student_id
     JOIN groups g ON sg.group_id = g.id
-    WHERE g.course_id = $1 AND sg.is_active = 1
+    WHERE g.course_id = $1 AND sg.is_active = TRUE
     ORDER BY s.full_name, g.title`,
     [courseId]
   );

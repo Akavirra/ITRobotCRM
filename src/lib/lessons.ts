@@ -113,7 +113,7 @@ export async function generateLessonsForAllGroups(
   createdBy: number
 ): Promise<{ groupId: number; generated: number; skipped: number }[]> {
   const groups = await all<{ id: number }>(
-    `SELECT id FROM groups WHERE is_active = 1`
+    `SELECT id FROM groups WHERE is_active = TRUE`
   );
   
   const results: { groupId: number; generated: number; skipped: number }[] = [];

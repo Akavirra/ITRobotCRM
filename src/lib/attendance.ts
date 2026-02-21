@@ -74,7 +74,7 @@ export async function getAttendanceForLessonWithStudents(lessonId: number): Prom
      FROM students s
      JOIN student_groups sg ON s.id = sg.student_id
      LEFT JOIN attendance a ON a.student_id = s.id AND a.lesson_id = $1
-     WHERE sg.group_id = $2 AND sg.is_active = 1 AND s.is_active = 1
+     WHERE sg.group_id = $2 AND sg.is_active = TRUE AND s.is_active = TRUE
      ORDER BY s.full_name`,
     [lessonId, groupId]
   );
@@ -132,7 +132,7 @@ export async function setAttendanceForAll(
   const students = await all<{ id: number }>(
     `SELECT s.id FROM students s
      JOIN student_groups sg ON s.id = sg.student_id
-     WHERE sg.group_id = $1 AND sg.is_active = 1 AND s.is_active = 1`,
+     WHERE sg.group_id = $1 AND sg.is_active = TRUE AND s.is_active = TRUE`,
     [groupId]
   );
   
@@ -280,7 +280,7 @@ export async function getGroupAttendanceStats(
    JOIN student_groups sg ON s.id = sg.student_id
    JOIN lessons l ON l.group_id = sg.group_id
    LEFT JOIN attendance a ON a.lesson_id = l.id AND a.student_id = s.id
-   WHERE sg.group_id = $1 AND sg.is_active = 1 AND s.is_active = 1`;
+   WHERE sg.group_id = $1 AND sg.is_active = TRUE AND s.is_active = TRUE`;
   
   const params: (number | string)[] = [groupId];
   let paramIndex = 2;

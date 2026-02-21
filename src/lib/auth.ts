@@ -164,12 +164,12 @@ export async function userHasGroupAccess(userId: number, groupId: number, userRo
 // Get groups accessible by user
 export async function getAccessibleGroups(userId: number, userRole: string): Promise<number[]> {
   if (userRole === 'admin') {
-    const groups = await all<{ id: number }>(`SELECT id FROM groups WHERE is_active = 1`);
+    const groups = await all<{ id: number }>(`SELECT id FROM groups WHERE is_active = TRUE`);
     return groups.map(g => g.id);
   }
   
   const groups = await all<{ id: number }>(
-    `SELECT id FROM groups WHERE teacher_id = $1 AND is_active = 1`,
+    `SELECT id FROM groups WHERE teacher_id = $1 AND is_active = TRUE`,
     [userId]
   );
   

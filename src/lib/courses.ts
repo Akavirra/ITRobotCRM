@@ -25,7 +25,7 @@ export interface CourseWithStats extends Course {
 export async function getCourses(includeInactive: boolean = false): Promise<Course[]> {
   const sql = includeInactive
     ? `SELECT * FROM courses ORDER BY created_at DESC`
-    : `SELECT * FROM courses WHERE is_active = 1 ORDER BY created_at DESC`;
+    : `SELECT * FROM courses WHERE is_active = TRUE ORDER BY created_at DESC`;
   
   return await all<Course>(sql);
 }
@@ -38,16 +38,16 @@ export async function getCoursesWithStats(includeInactive: boolean = false): Pro
         COUNT(DISTINCT sg.student_id) as students_count
        FROM courses c
        LEFT JOIN groups g ON c.id = g.course_id
-       LEFT JOIN student_groups sg ON g.id = sg.group_id AND sg.is_active = 1
+       LEFT JOIN student_groups sg ON g.id = sg.group_id AND sg.is_active = TRUE
        GROUP BY c.id
        ORDER BY c.created_at DESC`
     : `SELECT c.*, 
         COUNT(DISTINCT g.id) as groups_count,
         COUNT(DISTINCT sg.student_id) as students_count
        FROM courses c
-       LEFT JOIN groups g ON c.id = g.course_id AND g.is_active = 1
-       LEFT JOIN student_groups sg ON g.id = sg.group_id AND sg.is_active = 1
-       WHERE c.is_active = 1
+       LEFT JOIN groups g ON c.id = g.course_id AND g.is_active = TRUE
+       LEFT JOIN student_groups sg ON g.id = sg.group_id AND sg.is_active = TRUE
+       WHERE c.is_active = TRUE
        GROUP BY c.id
        ORDER BY c.created_at DESC`;
   
@@ -103,12 +103,12 @@ export async function updateCourse(
 
 // Archive course (soft delete)
 export async function archiveCourse(id: number): Promise<void> {
-  await run(`UPDATE courses SET is_active = 0, updated_at = NOW() WHERE id = $1`, [id]);
+  await run(`UPDATE courses SET is_active = FALSE, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Restore course
 export async function restoreCourse(id: number): Promise<void> {
-  await run(`UPDATE courses SET is_active = 1, updated_at = NOW() WHERE id = $1`, [id]);
+  await run(`UPDATE courses SET is_active = TRUE, updated_at = NOW() WHERE id = $1`, [id]);
 }
 
 // Delete course permanently (with cascade delete of groups)
@@ -144,7 +144,7 @@ export async function searchCourses(query: string, includeInactive: boolean = fa
   const searchTerm = `%${query}%`;
   const sql = includeInactive
     ? `SELECT * FROM courses WHERE title LIKE $1 OR description LIKE $2 ORDER BY created_at DESC`
-    : `SELECT * FROM courses WHERE is_active = 1 AND (title LIKE $1 OR description LIKE $2) ORDER BY created_at DESC`;
+    : `SELECT * FROM courses WHERE is_active = TRUE AND (title LIKE $1 OR description LIKE $2) ORDER BY created_at DESC`;
   
   return await all<Course>(sql, [searchTerm, searchTerm]);
 }
