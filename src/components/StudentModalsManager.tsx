@@ -23,7 +23,7 @@ interface StudentData {
   parent2_relation: string | null;
   interested_courses: string | null;
   source: string | null;
-  is_active: number;
+  is_active: boolean;
   study_status: 'studying' | 'not_studying';
   created_at: string;
   updated_at: string;

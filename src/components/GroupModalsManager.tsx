@@ -10,7 +10,7 @@ interface GroupData {
   id: number;
   title: string;
   status: string;
-  is_active: number;
+  is_active: boolean;
   weekly_day: number;
   start_time: string;
   end_time: string | null;
@@ -209,8 +209,8 @@ export default function GroupModalsManager() {
             ) : group ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span className={`badge ${group.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
-                    {group.is_active === 1 ? 'Активна' : 'Неактивна'}
+                  <span className={`badge ${group.is_active ? 'badge-success' : 'badge-gray'}`}>
+                    {group.is_active ? 'Активна' : 'Неактивна'}
                   </span>
                   <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
                     {group.status === 'active' ? 'Активна' : group.status === 'completed' ? 'Завершена' : 'Архівна'}

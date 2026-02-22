@@ -15,7 +15,7 @@ interface CourseData {
   duration_months: number;
   program: string | null;
   flyer_path: string | null;
-  is_active: number;
+  is_active: boolean;
 }
 
 interface CourseGroup {
@@ -204,8 +204,8 @@ export default function CourseModalsManager() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {/* Status Badge */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span className={`badge ${course.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
-                    {course.is_active === 1 ? 'Активний' : 'Архівний'}
+                  <span className={`badge ${course.is_active ? 'badge-success' : 'badge-gray'}`}>
+                    {course.is_active ? 'Активний' : 'Архівний'}
                   </span>
                 </div>
 

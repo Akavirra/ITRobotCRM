@@ -41,7 +41,7 @@ interface Group {
   note: string | null;
   photos_folder_url: string | null;
   start_date: string | null;
-  is_active: number;
+  is_active: boolean;
   created_at: string;
 }
 

@@ -11,7 +11,7 @@ interface User {
   name: string;
   email: string;
   role: 'admin' | 'teacher';
-  is_active: number;
+  is_active: boolean;
   created_at: string;
 }
 

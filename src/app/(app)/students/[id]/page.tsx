@@ -34,7 +34,7 @@ interface Student {
   parent2_relation: string | null;
   interested_courses: string | null;
   source: string | null;
-  is_active: number;
+  is_active: boolean;
   study_status: 'studying' | 'not_studying';
   created_at: string;
   updated_at: string;
@@ -85,7 +85,7 @@ interface GroupDetails {
     public_id: string | null;
     title: string;
     status: string;
-    is_active: number;
+    is_active: boolean;
     weekly_day: number;
     start_time: string;
     end_time: string | null;
@@ -2315,8 +2315,8 @@ export default function StudentProfilePage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {/* Status Badge */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span className={`badge ${groupData.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
-                    {groupData.is_active === 1 ? 'Активна' : 'Неактивна'}
+                  <span className={`badge ${groupData.is_active ? 'badge-success' : 'badge-gray'}`}>
+                    {groupData.is_active ? 'Активна' : 'Неактивна'}
                   </span>
                   <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
                     {groupData.status === 'active' ? 'Активна' : groupData.status === 'completed' ? 'Завершена' : 'Архівна'}

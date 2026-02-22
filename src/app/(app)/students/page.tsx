@@ -29,7 +29,7 @@ interface GroupDetails {
     public_id: string | null;
     title: string;
     status: string;
-    is_active: number;
+    is_active: boolean;
     weekly_day: number;
     start_time: string;
     end_time: string | null;
@@ -71,7 +71,7 @@ interface Student {
   interested_courses: string | null;
   source: string | null;
   groups_count: number;
-  is_active: number;
+  is_active: boolean;
   created_at: string;
   study_status: 'studying' | 'not_studying';
   groups?: StudentGroup[];

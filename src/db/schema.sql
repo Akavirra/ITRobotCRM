@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('admin')),
+  role TEXT NOT NULL CHECK(role IN ('admin', 'teacher')),
   phone TEXT,
   telegram_id TEXT,
   photo_url TEXT,

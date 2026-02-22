@@ -23,7 +23,7 @@ interface Course {
   duration_months: number;
   program: string | null;
   flyer_path: string | null;
-  is_active: number;
+  is_active: boolean;
   groups_count?: number;
   students_count?: number;
 }
@@ -455,9 +455,9 @@ export default function CoursesPage() {
     .filter(c => {
       // Filter by archived status
       if (showArchived) {
-        return c.is_active === 0 && c.title.toLowerCase().includes(search.toLowerCase());
+        return !c.is_active && c.title.toLowerCase().includes(search.toLowerCase());
       }
-      return c.is_active === 1 && c.title.toLowerCase().includes(search.toLowerCase());
+      return c.is_active && c.title.toLowerCase().includes(search.toLowerCase());
     })
     .sort((a, b) => a.title.localeCompare(b.title, 'uk'));
 

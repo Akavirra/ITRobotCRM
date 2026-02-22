@@ -24,7 +24,7 @@ interface Course {
   duration_months: number;
   program: string | null;
   flyer_path: string | null;
-  is_active: number;
+  is_active: boolean;
 }
 
 interface CourseGroup {

@@ -15,7 +15,7 @@ export interface User {
   telegram_id?: string | null;
   photo_url?: string | null;
   notes?: string | null;
-  is_active: number;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

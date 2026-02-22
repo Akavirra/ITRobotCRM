@@ -34,7 +34,7 @@ export async function GET(
     telegram_id: string | null;
     photo_url: string | null;
     notes: string | null;
-    is_active: number;
+    is_active: boolean;
     created_at: string;
   }>(
     `SELECT id, public_id, name, email, phone, telegram_id, photo_url, notes, is_active, created_at
@@ -308,7 +308,7 @@ export async function DELETE(
   }
   
   // Check if teacher is active - if active, deactivate; if already inactive, allow permanent delete
-  const teacher = await get<{ is_active: number }>(
+  const teacher = await get<{ is_active: boolean }>(
     `SELECT is_active FROM users WHERE id = $1 AND role = 'teacher'`,
     [params.id]
   );
@@ -318,7 +318,7 @@ export async function DELETE(
   }
   
   // If permanent delete requested but teacher is still active, first deactivate
-  if (permanent && teacher.is_active === 1) {
+  if (permanent && teacher.is_active === true) {
     await run(
       `UPDATE users SET is_active = FALSE, updated_at = NOW() WHERE id = $1`,
       [params.id]

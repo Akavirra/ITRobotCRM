@@ -14,7 +14,7 @@ interface TeacherData {
   telegram_id: string | null;
   photo_url: string | null;
   notes: string | null;
-  is_active: number;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -62,11 +62,10 @@ function formatTime(time: string): string {
   return `${hours}:${minutes}`;
 }
 
-function getStatusBadge(isActive: number) {
-  const isActiveStatus = isActive === 1;
+function getStatusBadge(isActive: boolean) {
   return (
-    <span className={isActiveStatus ? 'badge badge-success' : 'badge badge-gray'}>
-      {isActiveStatus ? 'Активний' : 'Неактивний'}
+    <span className={isActive ? 'badge badge-success' : 'badge badge-gray'}>
+      {isActive ? 'Активний' : 'Неактивний'}
     </span>
   );
 }

@@ -52,7 +52,7 @@ export interface Group {
   status: GroupStatus;
   note: string | null;
   photos_folder_url: string | null;
-  is_active: number;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

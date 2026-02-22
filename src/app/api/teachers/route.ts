@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     
     const result = await run(`
       INSERT INTO users (public_id, name, email, password_hash, role, phone, telegram_id, notes, photo_url, is_active)
-      VALUES ($1, $2, $3, $4, 'teacher', $5, $6, $7, $8, 1)
+      VALUES ($1, $2, $3, $4, 'teacher', $5, $6, $7, $8, TRUE)
       RETURNING id
     `, [publicId, name, email, hashedPassword, phone || null, telegram_id || null, notes || null, photoUrl]);
 

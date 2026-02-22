@@ -21,7 +21,7 @@ interface TeacherGroup {
   public_id: string | null;
   title: string;
   status: string;
-  is_active: number;
+  is_active: boolean;
   weekly_day: number;
   start_time: string;
   course_title?: string;
@@ -37,7 +37,7 @@ interface Teacher {
   photo_url?: string;
   notes?: string;
   active_groups_count: number;
-  is_active?: number;
+  is_active?: boolean;
   groups?: TeacherGroup[];
 }
 
@@ -47,7 +47,7 @@ interface GroupDetails {
     public_id: string | null;
     title: string;
     status: string;
-    is_active: number;
+    is_active: boolean;
     weekly_day: number;
     start_time: string;
     end_time: string | null;
@@ -504,8 +504,8 @@ export default function TeachersPage() {
                     
                     {/* Status Badge - fixed top right */}
                     <div style={{ position: 'absolute', top: '0.75rem', right: user.role === 'admin' ? '5.5rem' : '2.5rem', zIndex: 1 }}>
-                      <span className={`badge ${teacher.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
-                        {teacher.is_active === 1 ? (t('status.active') || 'Активний') : (t('status.inactive') || 'Неактивний')}
+                      <span className={`badge ${teacher.is_active ? 'badge-success' : 'badge-gray'}`}>
+                        {teacher.is_active ? (t('status.active') || 'Активний') : (t('status.inactive') || 'Неактивний')}
                       </span>
                     </div>
                     

@@ -32,7 +32,7 @@ interface Group {
   status: 'active' | 'graduate' | 'inactive';
   note: string | null;
   photos_folder_url: string | null;
-  is_active: number;
+  is_active: boolean;
   start_date: string | null;
   created_at: string;
 }

@@ -25,7 +25,7 @@ interface Teacher {
   telegram_id?: string;
   photo_url?: string;
   notes?: string;
-  is_active: number;
+  is_active: boolean;
   groups: Array<{
     id: number;
     public_id: string;
@@ -43,7 +43,7 @@ interface GroupDetails {
     public_id: string | null;
     title: string;
     status: string;
-    is_active: number;
+    is_active: boolean;
     weekly_day: number;
     start_time: string;
     end_time: string | null;
@@ -725,8 +725,8 @@ export default function TeacherProfilePage() {
           }}>
             {teacher.public_id}
           </span>
-          <span className={`badge ${teacher.is_active === 1 ? 'badge-success' : 'badge-gray'}`}>
-            {teacher.is_active === 1 ? 'Активний' : 'Неактивний'}
+          <span className={`badge ${teacher.is_active ? 'badge-success' : 'badge-gray'}`}>
+            {teacher.is_active ? 'Активний' : 'Неактивний'}
           </span>
         </div>
         
