@@ -40,7 +40,7 @@ export async function GET(
   }
   
   // Fetch groups for the course with teacher name join
-  const groups = all<CourseGroup>(
+  const groups = await all<CourseGroup>(
     `SELECT g.id, g.public_id, g.title, g.weekly_day, g.start_time, g.teacher_id, g.status, u.name as teacher_name, g.created_at
      FROM groups g
      LEFT JOIN users u ON g.teacher_id = u.id
